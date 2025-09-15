@@ -1,5 +1,10 @@
-# docker run --gpus all --shm-size=1g --ulimit memlock=-1 --ulimit stack=67108864 --runtime nvidia --rm -v ./:/workspace/SeniorProj -it nvcr.io/nvidia/physicsnemo/physicsnemo:25.06 bash
-from sympy import Symbol, Function
+# First, run:
+# docker run --gpus all --shm-size=1g --ulimit memlock=-1 --ulimit stack=67108864 --runtime nvidia --rm -v ./:/workspace -it nvcr.io/nvidia/physicsnemo/physicsnemo:25.06 bash
+# Now that you're in the bash of the container, run
+# python BasicChamberModel.py
+
+from sympy import Symbol, Function, interpolate
+import scipy
 import numpy as np
 
 import physicsnemo.sym
@@ -16,13 +21,56 @@ from physicsnemo.sym.domain.validator import PointwiseValidator
 from physicsnemo.sym.key import Key
 from physicsnemo.sym.eq.pde import PDE
 from physicsnemo.sym.utils.io.plotter import ValidatorPlotter
+import matplotlib.pyplot as plt # Because even the official examples use this
 
 class ChamberPlotter(ValidatorPlotter):
     def __call__(self, invar, true_outvar, pred_outvar):
         # only plot x,y dimensions
-        invar = {k: v for k, v in invar.items() if k in ["x", "y"]}
-        fs = super().__call__(invar, true_outvar, pred_outvar)
-        return fs
+
+        #times = np.unique(invar["time"])
+        figures = []
+
+        #for t in times:
+        # mask = (invar["time"][:,0] == t) # Each point has an associated time
+        x, y = invar["x"][:,0], invar["y"][:,0]
+
+        x,y = invar["x"][:,0], invar["y"][:,0]
+        extent = (x.min(), x.max(), y.min(), y.max())
+
+        # output variables
+        temp_true = true_outvar["Temperature"]
+        temp_pred = pred_outvar["Temperature"]
+
+        temp_true, temp_pred = self.interpolate_output(x, y, [temp_true, temp_pred], extent)
+
+        f = plt.figure(figsize=(14,4), dpi=100)
+        plt.suptitle(f"Lava chamber at t={t/3600:.1f} hours")
+        plt.subplot(1, 2, 1)
+        plt.title("True")
+        plt.imshow(temp_true.T, origin="lower", extent=extent)
+        plt.colorbar()
+        plt.subplot(1, 2, 2)
+        plt.title("Predicted")
+        plt.imshow(temp_pred.T, origin="lower", extent=extent)
+        plt.colorbar()
+
+        figures.append((f, f"temp_t{int(0)}"))
+        return figures
+    
+    @staticmethod
+    def interpolate_output(x, y, us, extent):
+        "Interpolates irregular points onto a mesh"
+
+        # define mesh to interpolate onto
+        xyi = np.meshgrid(
+            np.linspace(extent[0], extent[1], 100),
+            np.linspace(extent[2], extent[3], 100),
+            indexing="ij",
+        )
+
+        # linearly interpolate points onto mesh
+        us = [scipy.interpolate.griddata( (x, y), u, tuple(xyi) ) for u in us]
+        return us
 
 class MagmaChamberPDE(PDE):
     name = "MagmaChamber"
@@ -44,11 +92,10 @@ class MagmaChamberPDE(PDE):
 def create_solver(cfg: PhysicsNeMoConfig):
     chamber = Rectangle(
         point_1=(0, 0), point_2=(10000,5000), # Using Km as units
-        parameterization=Parameterization({Parameter("time"): 0.0})
+        parameterization=Parameterization({Parameter("time"): (0.0, 86400.0)})
     )
 
     time = Symbol("time")
-    time_range = {time: (0, 86400)} # 1 day
 
     network = instantiate_arch(
         input_keys=[Key("time"), Key("x"), Key("y")],
@@ -70,18 +117,30 @@ def create_solver(cfg: PhysicsNeMoConfig):
         lambda_weighting={"Temperature": 1.0, "Xvelocity": 1.0, "Yvelocity": 1.0}
     )
     domain.add_constraint(boundary, "boundary")
+
+    ## times to visualize (0h, 6h, 12h, 24h)
+    #times = np.array([0, 6*3600, 12*3600, 24*3600])
+
     init_points = chamber.sample_interior(512) # arbitrary sample
 
-    n_val = int(np.asarray(init_points["x"]).shape[0])
+    invar = {}
+    for k, v in init_points.items():
+        invar[k] = np.tile(v, 1)
+
+    # n_val = int(np.asarray(init_points["x"]).shape[0])
+
+    #invar["time"] = np.repeat(times, init_points["x"].shape[0])[:, None]
+
+    n_val = invar["x"].shape[0]
 
     true_init = {
-        "Temperature": np.full(n_val, 1200.0, dtype=float), 
-        "Xvelocity": np.full(n_val, 0.0, dtype=float), 
-        "Yvelocity": np.full(n_val, 0.0, dtype=float)
+        "Temperature": np.full((n_val, 1), 1200.0, dtype=float), 
+        "Xvelocity": np.full((n_val, 1), 0.0, dtype=float), 
+        "Yvelocity": np.full((n_val, 1), 0.0, dtype=float)
     }
     
-    plotter = ValidatorPlotter()
-    
+    plotter = ChamberPlotter()
+
     validator = PointwiseValidator(
         nodes=nodes, invar=init_points, true_outvar=true_init, batch_size=128, plotter=plotter
     )
