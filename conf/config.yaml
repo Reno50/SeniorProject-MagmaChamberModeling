@@ -38,3 +38,4 @@ training:
 batch_size:
   surface: 1024
   boundary: 64
+  interior: 128

@@ -16,217 +16,280 @@ from physicsnemo.sym.geometry.primitives_2d import Rectangle
 from physicsnemo.sym.geometry.parameterization import Parameterization, Parameter
 from physicsnemo.sym.domain.constraint import (
     PointwiseBoundaryConstraint,
+    PointwiseInteriorConstraint,  # Added for initial conditions
 )
 from physicsnemo.sym.domain.validator import PointwiseValidator
 from physicsnemo.sym.key import Key
 from physicsnemo.sym.eq.pde import PDE
 from physicsnemo.sym.utils.io.plotter import ValidatorPlotter
-import matplotlib.pyplot as plt # Because even the official examples use this
+import matplotlib.pyplot as plt
 
-class ChamberPlotter(ValidatorPlotter):
+class EnhancedChamberPlotter(ValidatorPlotter):
     def __call__(self, invar, true_outvar, pred_outvar):
-        # only plot x,y dimensions
-
-        #times = np.unique(invar["time"])
+        """Plot results at multiple time steps"""
+        
+        # Get unique time values
+        times = np.unique(invar["time"][:,0])
         figures = []
 
-        #for t in times:
-        # mask = (invar["time"][:,0] == t) # Each point has an associated time
-        x, y = invar["x"][:,0], invar["y"][:,0]
+        for t in times:
+            # Filter data for this specific time
+            time_mask = (invar["time"][:,0] == t)
+            x = invar["x"][time_mask,0]
+            y = invar["y"][time_mask,0]
+            
+            if len(x) == 0:  # Skip if no data for this time
+                continue
+                
+            extent = (x.min(), x.max(), y.min(), y.max())
 
-        x,y = invar["x"][:,0], invar["y"][:,0]
-        extent = (x.min(), x.max(), y.min(), y.max())
+            # Get temperature data for this time step
+            temp_true = true_outvar["Temperature"][time_mask]
+            temp_pred = pred_outvar["Temperature"][time_mask]
+            
+            # Interpolate onto regular grid
+            temp_true_interp, temp_pred_interp = self.interpolate_output(
+                x, y, [temp_true, temp_pred], extent
+            )
 
-        # output variables
-        temp_true = true_outvar["Temperature"]
-        temp_pred = pred_outvar["Temperature"]
+            # Create figure
+            f = plt.figure(figsize=(16, 6), dpi=100)
+            time_hours = t / 3600  # Convert seconds to hours
+            plt.suptitle(f"Magma Chamber at {time_hours:.1f} hours", fontsize=16)
+            
+            # True temperature
+            plt.subplot(1, 3, 1)
+            plt.title("True Temperature")
+            im1 = plt.imshow(temp_true_interp.T, origin="lower", extent=extent, 
+                           cmap='hot', vmin=1000, vmax=1400)
+            plt.colorbar(im1, label="Temperature (°C)")
+            plt.xlabel("X (m)")
+            plt.ylabel("Y (m)")
+            
+            # Predicted temperature
+            plt.subplot(1, 3, 2)
+            plt.title("Predicted Temperature")
+            im2 = plt.imshow(temp_pred_interp.T, origin="lower", extent=extent, 
+                           cmap='hot', vmin=1000, vmax=1400)
+            plt.colorbar(im2, label="Temperature (°C)")
+            plt.xlabel("X (m)")
+            plt.ylabel("Y (m)")
+            
+            # Difference plot
+            plt.subplot(1, 3, 3)
+            plt.title("Difference (Pred - True)")
+            diff = temp_pred_interp - temp_true_interp
+            im3 = plt.imshow(diff.T, origin="lower", extent=extent, 
+                           cmap='RdBu_r', vmin=-50, vmax=50)
+            plt.colorbar(im3, label="Temperature Difference (°C)")
+            plt.xlabel("X (m)")
+            plt.ylabel("Y (m)")
 
-        temp_true, temp_pred = self.interpolate_output(x, y, [temp_true, temp_pred], extent)
-
-        f = plt.figure(figsize=(14,4), dpi=100)
-        plt.suptitle(f"Lava chamber at 0 hours")
-        plt.subplot(1, 2, 1)
-        plt.title("True")
-        plt.imshow(temp_true.T, origin="lower", extent=extent)
-        plt.colorbar()
-        plt.subplot(1, 2, 2)
-        plt.title("Predicted")
-        plt.imshow(temp_pred.T, origin="lower", extent=extent)
-        plt.colorbar()
-
-        figures.append((f, f"temp_t{int(1)}"))
+            plt.tight_layout()
+            figures.append((f, f"temp_t{time_hours:.1f}h"))
+            
         return figures
     
     @staticmethod 
     def interpolate_output(x, y, us, extent):
-        "Interpolates irregular points onto a mesh" # define mesh to interpolate onto 
-        xyi = np.meshgrid( np.linspace(extent[0], extent[1], 100), np.linspace(extent[2], extent[3], 100), indexing="ij", ) # linearly interpolate points onto mesh 
-        us = [scipy.interpolate.griddata((x, y), u.ravel(), tuple(xyi)) for u in us]
+        """Interpolates irregular points onto a mesh"""
+        xyi = np.meshgrid(
+            np.linspace(extent[0], extent[1], 100), 
+            np.linspace(extent[2], extent[3], 100), 
+            indexing="ij"
+        )
+        us = [scipy.interpolate.griddata((x, y), u.ravel(), tuple(xyi), 
+                                       method='cubic', fill_value=np.nan) for u in us]
         return us
 
-class MagmaChamberPDE(PDE):
-    name = "MagmaChamber"
+class RealisticMagmaChamberPDE(PDE):
+    """
+    Enhanced PDE system for magma chamber modeling including:
+    - Mass conservation (continuity equation)
+    - Heat equation with convection and diffusion
+    - Simplified momentum (Stokes flow for high-viscosity magma)
+    """
+    name = "RealisticMagmaChamer"
     
     def __init__(self):
+        # Symbols
         time, x, y = Symbol('time'), Symbol('x'), Symbol('y')
 
-        # --- Field Variables --- 
-        Temperature = Function("Temperature") # Temperature of the magma
-        Xvelocity = Function("Xvelocity") # Xvelocity of the magma
-        Yvelocity = Function("Yvelocity") # Yvelocity of the magma
-
-        # --- Equations ---
-
+        # Field Variables (evaluated at coordinates)
+        Temperature = Function("Temperature")(time, x, y)  # Temperature [K or °C]
+        Xvelocity = Function("Xvelocity")(time, x, y)      # X-velocity [m/s]
+        Yvelocity = Function("Yvelocity")(time, x, y)      # Y-velocity [m/s]
+        
+        # Physical constants - let's substitute with actual values
+        alpha = 1e-6  # Thermal diffusivity [m²/s] for basaltic magma
+        
         self.equations = {}
-        self.equations["mass_conservation"] = Xvelocity.diff(x) + Yvelocity.diff(y)
+        
+        # 1. Mass Conservation (Continuity Equation)
+        # ∇ · u = 0  =>  ∂u/∂x + ∂v/∂y = 0
+        self.equations["continuity"] = Xvelocity.diff(x) + Yvelocity.diff(y)
+        
+        # 2. Heat Equation with Convection
+        # ∂T/∂t + u·∇T = α∇²T
+        # ∂T/∂t + u(∂T/∂x) + v(∂T/∂y) = α(∂²T/∂x² + ∂²T/∂y²)
+        self.equations["heat_equation"] = (
+            Temperature.diff(time) + 
+            Xvelocity * Temperature.diff(x) + 
+            Yvelocity * Temperature.diff(y) - 
+            alpha * (Temperature.diff(x, 2) + Temperature.diff(y, 2))
+        )
+        
+        # 3. Simplified Momentum Equations (Stokes flow)
+        # For high-viscosity magma, we can approximate with Stokes equations
+        # -∇p + μ∇²u = 0  (ignoring pressure gradient for now)
+        # This is a simplification - in reality you'd include buoyancy forces
+        
+        # Optional: Add buoyancy-driven flow (Boussinesq approximation)
+        # This would require thermal expansion coefficient and reference temperature
+
+def create_realistic_initial_conditions(chamber_points, time_points):
+    """
+    Create more realistic initial conditions with temperature gradients
+    """
+    n_points = len(chamber_points["x"])
+    n_times = len(time_points)
+    total_points = n_points * n_times
+    
+    # Create spatial coordinates repeated for each time step
+    x_coords = np.tile(chamber_points["x"].flatten(), n_times)
+    y_coords = np.tile(chamber_points["y"].flatten(), n_times)
+    t_coords = np.repeat(time_points, n_points)
+    
+    # Create realistic temperature profile
+    # Higher temperature at bottom, cooler at top (thermal stratification)
+    chamber_height = 5000  # 5 km
+    base_temp = 1300       # °C at bottom
+    top_temp = 1100        # °C at top
+    
+    # Linear temperature gradient with y-coordinate
+    temp_gradient = (base_temp - top_temp) / chamber_height
+    initial_temps = base_temp - temp_gradient * y_coords
+    
+    # Add some small random perturbations to trigger convection
+    np.random.seed(42)  # For reproducibility
+    perturbations = np.random.normal(0, 10, total_points)  # ±10°C random variations
+    initial_temps += perturbations
+    
+    # Start with no initial velocities (magma at rest)
+    initial_u = np.zeros(total_points)
+    initial_v = np.zeros(total_points)
+    
+    return {
+        "time": t_coords.reshape(-1, 1),
+        "x": x_coords.reshape(-1, 1), 
+        "y": y_coords.reshape(-1, 1),
+        "Temperature": initial_temps,
+        "Xvelocity": initial_u,
+        "Yvelocity": initial_v
+    }
 
 @physicsnemo.sym.main(config_path="conf", config_name="config")
-def create_solver(cfg: PhysicsNeMoConfig):
+def create_enhanced_solver(cfg: PhysicsNeMoConfig):
+    # Define chamber geometry (10 km × 5 km)
     chamber = Rectangle(
-        point_1=(0, 0), point_2=(10000,5000), # Using Km as units
-        parameterization=Parameterization({Parameter("time"): (0.0, 86400.0)})
+        point_1=(0, 0), 
+        point_2=(10000, 5000),  # 10 km × 5 km
+        parameterization=Parameterization({
+            Parameter("time"): (0.0, 86400.0)  # 24 hours in seconds
+        })
     )
 
-    time = Symbol("time")
-
+    # Create neural network
     network = instantiate_arch(
         input_keys=[Key("time"), Key("x"), Key("y")],
         output_keys=[Key("Temperature"), Key("Xvelocity"), Key("Yvelocity")],
         cfg=cfg.arch.fully_connected,
     )
-    magma_pde = MagmaChamberPDE()
+    
+    # Initialize enhanced PDE
+    magma_pde = RealisticMagmaChamberPDE()
+    nodes = magma_pde.make_nodes() + [network.make_node(name="enhanced_magma_net")]
 
-    nodes = magma_pde.make_nodes() + [network.make_node(name="magma_net")]
-
-    # --- Domain stuff ---
+    # Create domain
     domain = Domain()
 
+    # --- Boundary Conditions ---
+    # More realistic boundary conditions
     boundary = PointwiseBoundaryConstraint(
         nodes=nodes,
         geometry=chamber,
-        outvar={"Temperature": 1200.0, "Xvelocity": 0.0, "Yvelocity": 0.0},
+        outvar={
+            "Temperature": 1200.0,  # Fixed temperature at walls
+            "Xvelocity": 0.0,       # No-slip condition
+            "Yvelocity": 0.0        # No-slip condition
+        },
         batch_size=cfg.batch_size.boundary,
-        lambda_weighting={"Temperature": 1.0, "Xvelocity": 1.0, "Yvelocity": 1.0}
+        lambda_weighting={
+            "Temperature": 1.0, 
+            "Xvelocity": 1.0, 
+            "Yvelocity": 1.0
+        }
     )
     domain.add_constraint(boundary, "boundary")
 
-    ## times to visualize (0h, 6h, 12h, 24h)
-    #times = np.array([0, 6*3600, 12*3600, 24*3600])
+    # --- Interior PDE Constraints ---
+    # This enforces the PDE equations throughout the interior
+    interior = PointwiseInteriorConstraint(
+        nodes=nodes,
+        geometry=chamber,
+        outvar={
+            "continuity": 0.0,      # Mass conservation
+            "heat_equation": 0.0,   # Heat equation
+        },
+        batch_size=cfg.batch_size.interior,
+        lambda_weighting={
+            "continuity": 1.0,
+            "heat_equation": 1.0,
+        }
+    )
+    domain.add_constraint(interior, "interior")
 
-    init_points = chamber.sample_interior(512) # arbitrary sample
-
-    invar = {}
-    for k, v in init_points.items():
-        invar[k] = np.tile(v, 1)
-
-    # n_val = int(np.asarray(init_points["x"]).shape[0])
-
-    #invar["time"] = np.repeat(times, init_points["x"].shape[0])[:, None]
-
-    n_val = invar["x"].shape[0]
-
-    true_init = {
-        "Temperature": np.full(n_val, 1200.0, dtype=float), 
-        "Xvelocity": np.full(n_val, 0.0, dtype=float), 
-        "Yvelocity": np.full(n_val, 0.0, dtype=float)
+    # --- Time-dependent Validation ---
+    # Sample interior points
+    interior_points = chamber.sample_interior(256)  # Fewer points for multiple times
+    
+    # Define time steps for validation (0h, 6h, 12h, 24h)
+    validation_times = np.array([0, 6*3600, 12*3600, 24*3600], dtype=float)
+    
+    # Create initial conditions with temperature gradients
+    validation_data = create_realistic_initial_conditions(
+        interior_points, validation_times
+    )
+    
+    # Extract input and output variables
+    invar = {
+        "time": validation_data["time"],
+        "x": validation_data["x"], 
+        "y": validation_data["y"]
     }
     
-    plotter = ChamberPlotter()
-
+    true_outvar = {
+        "Temperature": validation_data["Temperature"],
+        "Xvelocity": validation_data["Xvelocity"],
+        "Yvelocity": validation_data["Yvelocity"]
+    }
+    
+    # Create enhanced plotter
+    plotter = EnhancedChamberPlotter()
+    
+    # Create validator
     validator = PointwiseValidator(
-        nodes=nodes, invar=init_points, true_outvar=true_init, batch_size=128, plotter=plotter
+        nodes=nodes, 
+        invar=invar, 
+        true_outvar=true_outvar, 
+        batch_size=128, 
+        plotter=plotter
     )
     domain.add_validator(validator)
 
+    # Create and run solver
     solver = Solver(cfg, domain)
     solver.solve()
 
-
 if __name__ == "__main__":
-    create_solver()
-
-# from sympy import Symbol, Function, interpolate 
-# import scipy import numpy as np 
-# import physicsnemo.sym from physicsnemo.sym.hydra 
-# import instantiate_arch, PhysicsNeMoConfig from physicsnemo.sym.solver 
-# import Solver from physicsnemo.sym.domain 
-# import Domain from physicsnemo.sym.geometry.primitives_1d 
-# import Point1D from physicsnemo.sym.geometry.primitives_2d 
-# import Rectangle from physicsnemo.sym.geometry.parameterization 
-# import Parameterization, Parameter from physicsnemo.sym.domain.constraint 
-# import ( PointwiseBoundaryConstraint, ) from physicsnemo.sym.domain.validator 
-# import PointwiseValidator from physicsnemo.sym.key 
-# import Key from physicsnemo.sym.eq.pde 
-# import PDE from physicsnemo.sym.utils.io.plotter 
-# import ValidatorPlotter 
-# import matplotlib.pyplot as plt # Because even the official examples use this class 
-
-# ChamberPlotter(ValidatorPlotter): 
-#     def __call__(self, invar, true_outvar, pred_outvar): # only plot x,y dimensions 
-#         #invar = {k: v for k, v in invar.items() if k in ["x", "y"]} #fs = super().__call__(invar, true_outvar, pred_outvar, name) 
-#         x,y = invar["x"][:,0], invar["y"][:,0] 
-#         extent = (x.min(), x.max(), y.min(), y.max()) # output variables 
-        
-#         temp_true, temp_pred = true_outvar["Temperature"], pred_outvar["Temperature"] 
-#         temp_true, temp_pred = self.interpolate_output(x, y, [temp_true, temp_pred], extent) 
-#         f = plt.figure(figsize=(14,4), dpi=100) 
-#         plt.suptitle("Basic lava chamber modelling") 
-#         plt.subplot(1, 3, 1) 
-#         plt.title("True solution") 
-#         plt.imshow(temp_true.T, origin="lower", extent=extent, vmin=-0.2, vmax=1) 
-#         plt.xlabel("x"); plt.ylabel("y") 
-#         plt.colorbar() 
-#         plt.vlines(0.05, -0.05, 0.05, color="k", lw=10) 
-#         plt.hlines(-0.05, -0.05, 0.05, color="k", lw=10) 
-#         plt.legend(loc="lower right") 
-#         return [(f, f"custom_plot"),] 
-
-#     @staticmethod 
-#     def interpolate_output(x, y, us, extent): 
-#         "Interpolates irregular points onto a mesh" # define mesh to interpolate onto 
-#         xyi = np.meshgrid( np.linspace(extent[0], extent[1], 100), np.linspace(extent[2], extent[3], 100), indexing="ij", ) # linearly interpolate points onto mesh 
-#         us = [scipy.interpolate.griddata( (x, y), u, tuple(xyi) ) for u in us] 
-#         return us 
-
-# class MagmaChamberPDE(PDE): 
-#     name = "MagmaChamber" 
-#     def __init__(self): 
-#         time, x, y = Symbol('time'), Symbol('x'), Symbol('y') # --- Field Variables --- 
-        
-#         Temperature = Function("Temperature") # Temperature of the magma 
-#         Xvelocity = Function("Xvelocity") # Xvelocity of the magma 
-#         Yvelocity = Function("Yvelocity") # Yvelocity of the magma 
-        
-#         # --- Equations --- 
-#         self.equations = {} 
-#         self.equations["mass_conservation"] = Xvelocity.diff(x) + Yvelocity.diff(y) 
-    
-#     @physicsnemo.sym.main(config_path="conf", config_name="config") 
-#     def create_solver(cfg: PhysicsNeMoConfig): 
-#         chamber = Rectangle(
-#             point_1=(0, 0), 
-#             point_2=(10000,5000), # Using Km as units 
-#             parameterization=Parameterization({Parameter("time"): 0.0}) 
-#         ) 
-#         time = Symbol("time") 
-#         time_range = {time: (0, 86400)} # 1 day 
-#         network = instantiate_arch( input_keys=[Key("time"), Key("x"), Key("y")], output_keys=[Key("Temperature"), Key("Xvelocity"), Key("Yvelocity")], cfg=cfg.arch.fully_connected, ) 
-        
-#         magma_pde = MagmaChamberPDE() 
-#         nodes = magma_pde.make_nodes() + [network.make_node(name="magma_net")] 
-        
-#         # --- Domain stuff --- 
-#         domain = Domain() 
-#         boundary = PointwiseBoundaryConstraint( nodes=nodes, geometry=chamber, outvar={"Temperature": 1200.0, "Xvelocity": 0.0, "Yvelocity": 0.0}, batch_size=cfg.batch_size.boundary, lambda_weighting={"Temperature": 1.0, "Xvelocity": 1.0, "Yvelocity": 1.0} ) 
-#         domain.add_constraint(boundary, "boundary") 
-#         init_points = chamber.sample_interior(512) # arbitrary sample 
-#         n_val = int(np.asarray(init_points["x"]).shape[0]) 
-#         true_init = { "Temperature": np.full(n_val, 1200.0, dtype=float), "Xvelocity": np.full(n_val, 0.0, dtype=float), "Yvelocity": np.full(n_val, 0.0, dtype=float) } 
-#         plotter = ChamberPlotter() 
-#         validator = PointwiseValidator( nodes=nodes, invar=init_points, true_outvar=true_init, batch_size=128, plotter=plotter ) 
-#         domain.add_validator(validator) 
-#         solver = Solver(cfg, domain) 
-#         solver.solve() 
-
-# if __name__ == "__main__": 
-#     create_solver()
+    create_enhanced_solver()
