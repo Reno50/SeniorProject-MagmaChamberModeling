@@ -3,7 +3,7 @@
 # Now that you're in the bash of the container, run
 # python BasicChamberModel.py
 
-from sympy import Symbol, Function, interpolate
+from sympy import Symbol, Function
 import scipy
 import numpy as np
 
@@ -11,12 +11,11 @@ import physicsnemo.sym
 from physicsnemo.sym.hydra import instantiate_arch, PhysicsNeMoConfig
 from physicsnemo.sym.solver import Solver
 from physicsnemo.sym.domain import Domain
-from physicsnemo.sym.geometry.primitives_1d import Point1D
 from physicsnemo.sym.geometry.primitives_2d import Rectangle
 from physicsnemo.sym.geometry.parameterization import Parameterization, Parameter
 from physicsnemo.sym.domain.constraint import (
     PointwiseBoundaryConstraint,
-    PointwiseInteriorConstraint,  # Added for initial conditions
+    PointwiseInteriorConstraint
 )
 from physicsnemo.sym.domain.validator import PointwiseValidator
 from physicsnemo.sym.key import Key
@@ -120,7 +119,7 @@ class RealisticMagmaChamberPDE(PDE):
         Xvelocity = Function("Xvelocity")(time, x, y)      # X-velocity [m/s]
         Yvelocity = Function("Yvelocity")(time, x, y)      # Y-velocity [m/s]
         
-        # Physical constants - let's substitute with actual values
+        # Physical constants
         alpha = 1e-6  # Thermal diffusivity [m²/s] for basaltic magma
         
         self.equations = {}
@@ -147,46 +146,36 @@ class RealisticMagmaChamberPDE(PDE):
         # Optional: Add buoyancy-driven flow (Boussinesq approximation)
         # This would require thermal expansion coefficient and reference temperature
 
-def create_realistic_initial_conditions(chamber_points, time_points):
+def create_initial_temperature_field(x_coords, y_coords):
     """
-    Create more realistic initial conditions with temperature gradients
+    Create realistic initial temperature distribution
     """
-    n_points = len(chamber_points["x"])
-    n_times = len(time_points)
-    total_points = n_points * n_times
+    # Convert coordinates from meters to km for easier calculation
+    x_km = x_coords / 1000.0
+    y_km = y_coords / 1000.0
     
-    # Create spatial coordinates repeated for each time step
-    x_coords = np.tile(chamber_points["x"].flatten(), n_times)
-    y_coords = np.tile(chamber_points["y"].flatten(), n_times)
-    t_coords = np.repeat(time_points, n_points)
+    chamber_height = 5.0  # 5 km
+    base_temp = 1300      # °C at bottom
+    top_temp = 700       # °C at top
     
-    # Create realistic temperature profile
-    # Higher temperature at bottom, cooler at top (thermal stratification)
-    chamber_height = 5000  # 5 km
-    base_temp = 1300       # °C at bottom
-    top_temp = 1100        # °C at top
-    
-    # Linear temperature gradient with y-coordinate
+    # Create temperature gradient (hotter at bottom)
     temp_gradient = (base_temp - top_temp) / chamber_height
-    initial_temps = base_temp - temp_gradient * y_coords
+    temp_field = base_temp - temp_gradient * y_km
     
-    # Add some small random perturbations to trigger convection
-    np.random.seed(42)  # For reproducibility
-    perturbations = np.random.normal(0, 10, total_points)  # ±10°C random variations
-    initial_temps += perturbations
+    # Add thermal plume in center-bottom to trigger convection
+    center_x = 5.0  # Center of 10km chamber
+    plume_strength = 50  # Additional temperature boost
+    plume_radius = 1.0   # 1 km radius
     
-    # Start with no initial velocities (magma at rest)
-    initial_u = np.zeros(total_points)
-    initial_v = np.zeros(total_points)
+    # Gaussian thermal plume
+    distance_from_plume = np.sqrt((x_km - center_x)**2 + (y_km - 0.5)**2)
+    thermal_plume = plume_strength * np.exp(-(distance_from_plume / plume_radius)**2)
     
-    return {
-        "time": t_coords.reshape(-1, 1),
-        "x": x_coords.reshape(-1, 1), 
-        "y": y_coords.reshape(-1, 1),
-        "Temperature": initial_temps,
-        "Xvelocity": initial_u,
-        "Yvelocity": initial_v
-    }
+    # Only add plume in bottom half of chamber
+    bottom_mask = y_km < (chamber_height / 2)
+    temp_field += thermal_plume * bottom_mask
+    
+    return temp_field
 
 @physicsnemo.sym.main(config_path="conf", config_name="config")
 def create_enhanced_solver(cfg: PhysicsNeMoConfig):
@@ -195,7 +184,7 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         point_1=(0, 0), 
         point_2=(10000, 5000),  # 10 km × 5 km
         parameterization=Parameterization({
-            Parameter("time"): (0.0, 86400.0)  # 24 hours in seconds
+            Parameter("time"): (0.0, 3600.0)  # 1 hour in seconds
         })
     )
 
@@ -214,12 +203,12 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
     domain = Domain()
 
     # --- Boundary Conditions ---
-    # More realistic boundary conditions
+    # Reasonable boundary conditions
     boundary = PointwiseBoundaryConstraint(
         nodes=nodes,
         geometry=chamber,
         outvar={
-            "Temperature": 1200.0,  # Fixed temperature at walls
+            "Temperature": 1000.0,  # Fixed temperature at walls
             "Xvelocity": 0.0,       # No-slip condition
             "Yvelocity": 0.0        # No-slip condition
         },
@@ -249,43 +238,98 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
     )
     domain.add_constraint(interior, "interior")
 
-    # --- Time-dependent Validation ---
-    # Sample interior points
-    interior_points = chamber.sample_interior(256)  # Fewer points for multiple times
-    
-    # Define time steps for validation (0h, 6h, 12h, 24h)
-    validation_times = np.array([0, 6*3600, 12*3600, 24*3600], dtype=float)
-    
-    # Create initial conditions with temperature gradients
-    validation_data = create_realistic_initial_conditions(
-        interior_points, validation_times
+    interior_t0 = Rectangle(
+        point_1=(0, 0), 
+        point_2=(10000, 5000),
+        parameterization=Parameterization({
+            Parameter("time"): 0.0
+        })
     )
     
-    # Extract input and output variables
-    invar = {
-        "time": validation_data["time"],
-        "x": validation_data["x"], 
-        "y": validation_data["y"]
+    # Simple interior constraint at t=0 - let network interpolate
+    interior_initial = PointwiseInteriorConstraint(
+        nodes=nodes,
+        geometry=interior_t0,
+        outvar={
+            "Xvelocity": 0.0,     # Start at rest everywhere
+            "Yvelocity": 0.0,     # Start at rest everywhere
+        },
+        batch_size=256,
+        lambda_weighting={
+            "Xvelocity": 3.0,
+            "Yvelocity": 3.0,
+        }
+    )
+    domain.add_constraint(interior_initial, "initial_velocities")
+
+    # --- Time-dependent Validation ---
+    # --- Validation: Only check t=0, let network evolve freely ---
+    val_points = chamber.sample_interior(128)
+
+    # Validation at t=0 only (supervised learning for initial conditions)
+    val_invar_t0 = {
+        "time": np.zeros((128, 1)),  # Only t=0 
+        "x": val_points["x"],
+        "y": val_points["y"],
     }
-    
-    true_outvar = {
-        "Temperature": validation_data["Temperature"],
-        "Xvelocity": validation_data["Xvelocity"],
-        "Yvelocity": validation_data["Yvelocity"]
+
+    # Create realistic initial temperature at t=0 only
+    val_temps_t0 = create_initial_temperature_field(
+        val_points["x"].flatten(), 
+        val_points["y"].flatten()
+    )
+
+    val_outvar_t0 = {
+        "Temperature": val_temps_t0,
+        "Xvelocity": np.zeros_like(val_temps_t0),
+        "Yvelocity": np.zeros_like(val_temps_t0),
     }
-    
-    # Create enhanced plotter
-    plotter = EnhancedChamberPlotter()
-    
-    # Create validator
-    validator = PointwiseValidator(
+
+    # This validator only checks initial conditions
+    validator_t0 = PointwiseValidator(
         nodes=nodes, 
-        invar=invar, 
-        true_outvar=true_outvar, 
-        batch_size=128, 
+        invar=val_invar_t0, 
+        true_outvar=val_outvar_t0, 
+        batch_size=64, 
+        plotter=None
+    )
+    domain.add_validator(validator_t0)
+
+    # --- Separate visualization validator (no constraints on evolution) ---
+    viz_times = np.array([0, 900, 1800, 2700, 3600], dtype=float)
+    viz_points = chamber.sample_interior(64)
+
+    n_viz_times = len(viz_times)
+    n_viz_points = viz_points["x"].shape[0]
+
+    viz_invar = {
+        "time": np.tile(viz_times, n_viz_points).reshape(-1, 1),
+        "x": np.repeat(viz_points["x"], n_viz_times, axis=0),
+        "y": np.repeat(viz_points["y"], n_viz_times, axis=0),
+    }
+
+    # Dummy values just for plotter compatibility
+    dummy_temps = create_initial_temperature_field(
+        viz_invar["x"].flatten(), 
+        viz_invar["y"].flatten()
+    )
+
+    viz_outvar = {
+        "Temperature": dummy_temps,  # Just for plotter, not training
+        "Xvelocity": np.zeros_like(dummy_temps),
+        "Yvelocity": np.zeros_like(dummy_temps),
+    }
+
+    # Visualization validator - shows what network learned over time
+    plotter = EnhancedChamberPlotter()
+    viz_validator = PointwiseValidator(
+        nodes=nodes, 
+        invar=viz_invar, 
+        true_outvar=viz_outvar,
+        batch_size=32, 
         plotter=plotter
     )
-    domain.add_validator(validator)
+    domain.add_validator(viz_validator)
 
     # Create and run solver
     solver = Solver(cfg, domain)
