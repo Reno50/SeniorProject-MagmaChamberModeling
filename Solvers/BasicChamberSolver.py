@@ -50,90 +50,40 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
 
     # Constraints section 
 
-    # Define SymPy symbols for criteria
-    x_sym = Symbol('x')
-    y_sym = Symbol('y')
-
-    # Define spatial filter criteria using SymPy expressions
-    left_wall_criteria = x_sym < 100        # Points within 100m of left edge
-    right_wall_criteria = x_sym > 19900     # Points within 100m of right edge  
-    bottom_wall_criteria = y_sym < 100      # Points within 100m of bottom edge
-    top_wall_criteria = y_sym > 5900        # Points within 100m of top edge
-
-    geothermal_temp_expr = 20.0 + 25.0 * (y_sym / 1000.0)
-
-    # 1. LEFT WALL - Impermeable and insulating
-    left_boundary = PointwiseBoundaryConstraint(
+    # Simple rectangle for a border for now - I don't trust the wall constraints that Claude generated
+    boundary = PointwiseBoundaryConstraint(
         nodes=nodes,
         geometry=chamber,
         outvar={
-            "Xvelocity": 0.0,
-            "Yvelocity": 0.0,
-            "Temperature__x": 0.0,
+            "Temperature": 1000.0,  # Fixed temperature at walls
+            "Xvelocity": 0.0,       # No-slip condition
+            "Yvelocity": 0.0        # No-slip condition
         },
-        batch_size=cfg.batch_size.boundary // 4,  # Split boundary points among walls
-        criteria=left_wall_criteria,
+        batch_size=cfg.batch_size.boundary,
         lambda_weighting={
-            "Xvelocity": 1.0,
-            "Yvelocity": 1.0,
-            "Temperature__x": 1.0
-        }
-    )
-    domain.add_constraint(left_boundary, "left_wall")
-
-    # 2. BOTTOM WALL - Constant heat flux
-    bottom_boundary = PointwiseBoundaryConstraint(
-        nodes=nodes,
-        geometry=chamber,
-        outvar={
-            "Xvelocity": 0.0,
-            "Yvelocity": 0.0,
-            "Temperature__y": -0.026,
-        },
-        batch_size=cfg.batch_size.boundary // 4,
-        criteria=bottom_wall_criteria,
-        lambda_weighting={
-            "Xvelocity": 1.0,
-            "Yvelocity": 1.0,
-            "Temperature__y": 1.0
-        }
-    )
-    domain.add_constraint(bottom_boundary, "bottom_wall")
-
-    # 3. RIGHT WALL - Open hydrostatic boundary
-    right_boundary = PointwiseBoundaryConstraint(
-        nodes=nodes,
-        geometry=chamber,
-        outvar={
-            "Temperature": geothermal_temp_expr,  # Function of coordinates
-            # Remove pressure constraint for now until you add pressure to network
-        },
-        batch_size=cfg.batch_size.boundary // 4,
-        criteria=right_wall_criteria,
-        lambda_weighting={
-            "Temperature": 1.0,
-        }
-    )
-    domain.add_constraint(right_boundary, "right_wall")
-
-    # 4. TOP WALL - Fixed temperature
-    top_boundary = PointwiseBoundaryConstraint(
-        nodes=nodes,
-        geometry=chamber,
-        outvar={
-            "Temperature": 20.0,
-            "Xvelocity": 0.0,
-            "Yvelocity": 0.0,
-        },
-        batch_size=cfg.batch_size.boundary // 4,
-        criteria=top_wall_criteria,
-        lambda_weighting={
-            "Temperature": 1.0,
-            "Xvelocity": 1.0,
+            "Temperature": 1.0, 
+            "Xvelocity": 1.0, 
             "Yvelocity": 1.0
         }
     )
-    domain.add_constraint(top_boundary, "top_wall")
+    domain.add_constraint(boundary, "boundary")
+
+    # --- Interior PDE Constraints ---
+    # This enforces the PDE equations throughout the interior
+    interior = PointwiseInteriorConstraint(
+        nodes=nodes,
+        geometry=chamber,
+        outvar={
+            "continuity": 0.0,      # Mass conservation
+            "heat_equation": 0.0,   # Heat equation
+        },
+        batch_size=cfg.batch_size.interior,
+        lambda_weighting={
+            "continuity": 1.0,
+            "heat_equation": 1.0,
+        }
+    )
+    domain.add_constraint(interior, "interior")
 
 
     # --- Interior PDE Constraints ---
