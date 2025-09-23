@@ -36,6 +36,6 @@ training:
   max_steps : 50000
 
 batch_size:
-  surface: 1024
+  surface: 256
   boundary: 64
-  interior: 16
+  interior: 1024

@@ -11,7 +11,7 @@ import physicsnemo.sym
 from physicsnemo.sym.hydra import instantiate_arch, PhysicsNeMoConfig
 from physicsnemo.sym.solver import Solver
 from physicsnemo.sym.domain import Domain
-from physicsnemo.sym.geometry.primitives_2d import Rectangle
+from physicsnemo.sym.geometry.primitives_2d import Rectangle, Line
 from physicsnemo.sym.geometry.parameterization import Parameterization, Parameter
 from physicsnemo.sym.domain.constraint import (
     PointwiseBoundaryConstraint,
@@ -60,7 +60,7 @@ class EnhancedChamberPlotter(ValidatorPlotter):
             plt.subplot(1, 3, 1)
             plt.title("True Temperature")
             im1 = plt.imshow(temp_true_interp.T, origin="lower", extent=extent, 
-                           cmap='hot', vmin=1000, vmax=1400)
+                           cmap='hot', vmin=0, vmax=1600)
             plt.colorbar(im1, label="Temperature (°C)")
             plt.xlabel("X (m)")
             plt.ylabel("Y (m)")
@@ -69,7 +69,7 @@ class EnhancedChamberPlotter(ValidatorPlotter):
             plt.subplot(1, 3, 2)
             plt.title("Predicted Temperature")
             im2 = plt.imshow(temp_pred_interp.T, origin="lower", extent=extent, 
-                           cmap='hot', vmin=1000, vmax=1400)
+                           cmap='hot', vmin=0, vmax=1600)
             plt.colorbar(im2, label="Temperature (°C)")
             plt.xlabel("X (m)")
             plt.ylabel("Y (m)")
@@ -98,7 +98,7 @@ class EnhancedChamberPlotter(ValidatorPlotter):
             indexing="ij"
         )
         us = [scipy.interpolate.griddata((x, y), u.ravel(), tuple(xyi), 
-                                       method='cubic', fill_value=np.nan) for u in us]
+                                       method='nearest', fill_value=np.nan) for u in us]
         return us
 
 class RealisticMagmaChamberPDE(PDE):
@@ -146,43 +146,30 @@ class RealisticMagmaChamberPDE(PDE):
         # Optional: Add buoyancy-driven flow (Boussinesq approximation)
         # This would require thermal expansion coefficient and reference temperature
 
-def create_initial_temperature_field(x_coords, y_coords):
-    """
-    Create realistic initial temperature distribution
-    """
-    # Convert coordinates from meters to km for easier calculation
-    x_km = x_coords / 1000.0
-    y_km = y_coords / 1000.0
+def generate_initial_temps(x, y) -> list[int]: # A list of temperatures at each sample point
+    '''
+    Given two nparrays, return the initial temp - pretty simple, going off the diagram on page 171 of the paper
+    '''
+    # Now they are one dimensional arrays
+    x_flat = np.array(x).flatten() # a number of Xs
+    y_flat = np.array(y).flatten() # an identical number of Ys
+
+    returnVals = [0 for i in range(len(x_flat))] # an identical number of 0s for each point
+
+    for i in range(len(returnVals)):
+        if ((x_flat[i] > 6000) or (y_flat[i] > 3000)):
+            returnVals[i] = 20.0 + 25.0 * (y_flat[i] / 1000.0)
+        else:
+            returnVals[i] = 900 # pluton is 900 degrees celcius
     
-    chamber_height = 5.0  # 5 km
-    base_temp = 1300      # °C at bottom
-    top_temp = 700       # °C at top
-    
-    # Create temperature gradient (hotter at bottom)
-    temp_gradient = (base_temp - top_temp) / chamber_height
-    temp_field = base_temp - temp_gradient * y_km
-    
-    # Add thermal plume in center-bottom to trigger convection
-    center_x = 5.0  # Center of 10km chamber
-    plume_strength = 50  # Additional temperature boost
-    plume_radius = 1.0   # 1 km radius
-    
-    # Gaussian thermal plume
-    distance_from_plume = np.sqrt((x_km - center_x)**2 + (y_km - 0.5)**2)
-    thermal_plume = plume_strength * np.exp(-(distance_from_plume / plume_radius)**2)
-    
-    # Only add plume in bottom half of chamber
-    bottom_mask = y_km < (chamber_height / 2)
-    temp_field += thermal_plume * bottom_mask
-    
-    return temp_field
+    return returnVals
 
 @physicsnemo.sym.main(config_path="conf", config_name="config")
 def create_enhanced_solver(cfg: PhysicsNeMoConfig):
-    # Define chamber geometry (10 km × 5 km)
+    # Define chamber geometry
     chamber = Rectangle(
         point_1=(0, 0), 
-        point_2=(10000, 5000),  # 10 km × 5 km
+        point_2=(20000, 6000), # 20 x 6 km
         parameterization=Parameterization({
             Parameter("time"): (0.0, 3600.0)  # 1 hour in seconds
         })
@@ -202,24 +189,93 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
     # Create domain
     domain = Domain()
 
-    # --- Boundary Conditions ---
-    # Reasonable boundary conditions
-    boundary = PointwiseBoundaryConstraint(
+    # Constraints section 
+
+    # Define SymPy symbols for criteria
+    x_sym = Symbol('x')
+    y_sym = Symbol('y')
+
+    # Define spatial filter criteria using SymPy expressions
+    left_wall_criteria = x_sym < 100        # Points within 100m of left edge
+    right_wall_criteria = x_sym > 19900     # Points within 100m of right edge  
+    bottom_wall_criteria = y_sym < 100      # Points within 100m of bottom edge
+    top_wall_criteria = y_sym > 5900        # Points within 100m of top edge
+
+    geothermal_temp_expr = 20.0 + 25.0 * (y_sym / 1000.0)
+
+    # 1. LEFT WALL - Impermeable and insulating
+    left_boundary = PointwiseBoundaryConstraint(
         nodes=nodes,
         geometry=chamber,
         outvar={
-            "Temperature": 1000.0,  # Fixed temperature at walls
-            "Xvelocity": 0.0,       # No-slip condition
-            "Yvelocity": 0.0        # No-slip condition
+            "Xvelocity": 0.0,
+            "Yvelocity": 0.0,
+            "Temperature__x": 0.0,
         },
-        batch_size=cfg.batch_size.boundary,
+        batch_size=cfg.batch_size.boundary // 4,  # Split boundary points among walls
+        criteria=left_wall_criteria,
         lambda_weighting={
-            "Temperature": 1.0, 
-            "Xvelocity": 1.0, 
+            "Xvelocity": 1.0,
+            "Yvelocity": 1.0,
+            "Temperature__x": 1.0
+        }
+    )
+    domain.add_constraint(left_boundary, "left_wall")
+
+    # 2. BOTTOM WALL - Constant heat flux
+    bottom_boundary = PointwiseBoundaryConstraint(
+        nodes=nodes,
+        geometry=chamber,
+        outvar={
+            "Xvelocity": 0.0,
+            "Yvelocity": 0.0,
+            "Temperature__y": -0.026,
+        },
+        batch_size=cfg.batch_size.boundary // 4,
+        criteria=bottom_wall_criteria,
+        lambda_weighting={
+            "Xvelocity": 1.0,
+            "Yvelocity": 1.0,
+            "Temperature__y": 1.0
+        }
+    )
+    domain.add_constraint(bottom_boundary, "bottom_wall")
+
+    # 3. RIGHT WALL - Open hydrostatic boundary
+    right_boundary = PointwiseBoundaryConstraint(
+        nodes=nodes,
+        geometry=chamber,
+        outvar={
+            "Temperature": geothermal_temp_expr,  # Function of coordinates
+            # Remove pressure constraint for now until you add pressure to network
+        },
+        batch_size=cfg.batch_size.boundary // 4,
+        criteria=right_wall_criteria,
+        lambda_weighting={
+            "Temperature": 1.0,
+        }
+    )
+    domain.add_constraint(right_boundary, "right_wall")
+
+    # 4. TOP WALL - Fixed temperature
+    top_boundary = PointwiseBoundaryConstraint(
+        nodes=nodes,
+        geometry=chamber,
+        outvar={
+            "Temperature": 20.0,
+            "Xvelocity": 0.0,
+            "Yvelocity": 0.0,
+        },
+        batch_size=cfg.batch_size.boundary // 4,
+        criteria=top_wall_criteria,
+        lambda_weighting={
+            "Temperature": 1.0,
+            "Xvelocity": 1.0,
             "Yvelocity": 1.0
         }
     )
-    domain.add_constraint(boundary, "boundary")
+    domain.add_constraint(top_boundary, "top_wall")
+
 
     # --- Interior PDE Constraints ---
     # This enforces the PDE equations throughout the interior
@@ -232,15 +288,15 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         },
         batch_size=cfg.batch_size.interior,
         lambda_weighting={
-            "continuity": 1.0,
-            "heat_equation": 1.0,
+            "continuity": 10.0,
+            "heat_equation": 12.0,
         }
     )
     domain.add_constraint(interior, "interior")
 
     interior_t0 = Rectangle(
         point_1=(0, 0), 
-        point_2=(10000, 5000),
+        point_2=(20000, 6000),
         parameterization=Parameterization({
             Parameter("time"): 0.0
         })
@@ -251,6 +307,7 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         nodes=nodes,
         geometry=interior_t0,
         outvar={
+            "Temperature": generate_initial_temps, # Initial temps
             "Xvelocity": 0.0,     # Start at rest everywhere
             "Yvelocity": 0.0,     # Start at rest everywhere
         },
@@ -258,46 +315,14 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         lambda_weighting={
             "Xvelocity": 3.0,
             "Yvelocity": 3.0,
+            "Temperature": 3.0
         }
     )
     domain.add_constraint(interior_initial, "initial_velocities")
 
-    # --- Time-dependent Validation ---
-    # --- Validation: Only check t=0, let network evolve freely ---
-    val_points = chamber.sample_interior(128)
-
-    # Validation at t=0 only (supervised learning for initial conditions)
-    val_invar_t0 = {
-        "time": np.zeros((128, 1)),  # Only t=0 
-        "x": val_points["x"],
-        "y": val_points["y"],
-    }
-
-    # Create realistic initial temperature at t=0 only
-    val_temps_t0 = create_initial_temperature_field(
-        val_points["x"].flatten(), 
-        val_points["y"].flatten()
-    )
-
-    val_outvar_t0 = {
-        "Temperature": val_temps_t0,
-        "Xvelocity": np.zeros_like(val_temps_t0),
-        "Yvelocity": np.zeros_like(val_temps_t0),
-    }
-
-    # This validator only checks initial conditions
-    validator_t0 = PointwiseValidator(
-        nodes=nodes, 
-        invar=val_invar_t0, 
-        true_outvar=val_outvar_t0, 
-        batch_size=64, 
-        plotter=None
-    )
-    domain.add_validator(validator_t0)
-
     # --- Separate visualization validator (no constraints on evolution) ---
     viz_times = np.array([0, 900, 1800, 2700, 3600], dtype=float)
-    viz_points = chamber.sample_interior(64)
+    viz_points = chamber.sample_interior(256)
 
     n_viz_times = len(viz_times)
     n_viz_points = viz_points["x"].shape[0]
@@ -309,7 +334,7 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
     }
 
     # Dummy values just for plotter compatibility
-    dummy_temps = create_initial_temperature_field(
+    dummy_temps = generate_initial_temps(
         viz_invar["x"].flatten(), 
         viz_invar["y"].flatten()
     )
