@@ -30,14 +30,14 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         point_1=(0, 0), 
         point_2=(20000, 6000), # 20 x 6 km
         parameterization=Parameterization({
-            Parameter("time"): (0.0, 3600.0)  # 1 hour in seconds
+            Parameter("time"): (0.0, 60.0)  # 60 seconds
         })
     )
 
     # Create neural network
     network = instantiate_arch(
         input_keys=[Key("time"), Key("x"), Key("y")],
-        output_keys=[Key("Temperature"), Key("Xvelocity"), Key("Yvelocity")],
+        output_keys=[Key("Temperature"), Key("Pressure"), Key("Xvelocity"), Key("Yvelocity")],
         cfg=cfg.arch.fully_connected,
     )
     
@@ -45,7 +45,7 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
     magma_pde = SimplifiedMagmaChamberPDE()
     nodes = magma_pde.make_nodes() + [network.make_node(name="enhanced_magma_net")]
 
-    # Create domain
+    # Create domain to use 
     domain = Domain()
 
     # Constraints section 
@@ -55,15 +55,15 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         nodes=nodes,
         geometry=chamber,
         outvar={
-            "Temperature": 1000.0,  # Fixed temperature at walls
+            "Temperature": 25.0,  # Fixed temperature at walls
             "Xvelocity": 0.0,       # No-slip condition
             "Yvelocity": 0.0        # No-slip condition
         },
         batch_size=cfg.batch_size.boundary,
         lambda_weighting={
-            "Temperature": 1.0, 
-            "Xvelocity": 1.0, 
-            "Yvelocity": 1.0
+            "Temperature": 3.0, 
+            "Xvelocity": 3.0, 
+            "Yvelocity": 3.0
         }
     )
     domain.add_constraint(boundary, "boundary")
@@ -74,31 +74,17 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         nodes=nodes,
         geometry=chamber,
         outvar={
-            "continuity": 0.0,      # Mass conservation
-            "heat_equation": 0.0,   # Heat equation
+            "darcy_x": 0.0,       # Darcy x
+            "darcy_y": 0.0,       # Darcy y
+            "continuity": 0.0,    # Continuity
+            "heat_equation": 0.0  # Heat equation
         },
         batch_size=cfg.batch_size.interior,
         lambda_weighting={
-            "continuity": 1.0,
-            "heat_equation": 1.0,
-        }
-    )
-    domain.add_constraint(interior, "interior")
-
-
-    # --- Interior PDE Constraints ---
-    # This enforces the PDE equations throughout the interior
-    interior = PointwiseInteriorConstraint(
-        nodes=nodes,
-        geometry=chamber,
-        outvar={
-            "continuity": 0.0,      # Mass conservation
-            "heat_equation": 0.0,   # Heat equation
-        },
-        batch_size=cfg.batch_size.interior,
-        lambda_weighting={
+            "darcy_x": 10.0,
+            "darcy_y": 12.0,
             "continuity": 10.0,
-            "heat_equation": 12.0,
+            "heat_equation": 0.0
         }
     )
     domain.add_constraint(interior, "interior")
@@ -130,7 +116,7 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
     domain.add_constraint(interior_initial, "initial_velocities")
 
     # --- Separate visualization validator (no constraints on evolution) ---
-    viz_times = np.array([0, 900, 1800, 2700, 3600], dtype=float)
+    viz_times = np.array([0, 15, 30, 45, 60], dtype=float)
     viz_points = chamber.sample_interior(256)
 
     n_viz_times = len(viz_times)
