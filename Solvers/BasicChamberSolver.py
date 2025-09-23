@@ -1,13 +1,9 @@
-# First, run:
-# docker run --gpus all --shm-size=1g --ulimit memlock=-1 --ulimit stack=67108864 --runtime nvidia --rm -v ./:/workspace -it nvcr.io/nvidia/physicsnemo/physicsnemo:25.06 bash
-# Now that you're in the bash of the container, run
-# python BasicChamberModel.py
+# We goin back to rectangles with this one
+# I want basic fluid flow before I can match their results with specific boundary conditions
+
+# Utilizing the SimplifiedMagmaChamberPDE
 
 from sympy import Symbol, Function
-import scipy
-import numpy as np
-
-import physicsnemo.sym
 from physicsnemo.sym.hydra import instantiate_arch, PhysicsNeMoConfig
 from physicsnemo.sym.solver import Solver
 from physicsnemo.sym.domain import Domain
@@ -19,31 +15,15 @@ from physicsnemo.sym.domain.constraint import (
 )
 from physicsnemo.sym.domain.validator import PointwiseValidator
 from physicsnemo.sym.key import Key
-from physicsnemo.sym.eq.pde import PDE
-from physicsnemo.sym.utils.io.plotter import ValidatorPlotter
-import matplotlib.pyplot as plt
-from PDEs.BasicChamberModel import BasicMagmaChamberPDE
+import physicsnemo.sym
+import numpy as np
+
 from PDEs.TwoEquationModels import SimplifiedMagmaChamberPDE
+from InitialConditionsAndConstants.BasicInitialConditionsAndConsts import generate_initial_temps
 from Plotters.BasicTempPlotter import ChamberPlotter
 
-def generate_initial_temps(x, y) -> list[int]: # A list of temperatures at each sample point
-    '''
-    Given two nparrays, return the initial temp - pretty simple, going off the diagram on page 171 of the paper
-    '''
-    # Now they are one dimensional arrays
-    x_flat = np.array(x).flatten() # a number of Xs
-    y_flat = np.array(y).flatten() # an identical number of Ys
 
-    returnVals = [0 for i in range(len(x_flat))] # an identical number of 0s for each point
-
-    for i in range(len(returnVals)):
-        if ((x_flat[i] > 6000) or (y_flat[i] > 3000)):
-            returnVals[i] = 20.0 + 25.0 * (y_flat[i] / 1000.0)
-        else:
-            returnVals[i] = 900 # pluton is 900 degrees celcius
-    
-    return returnVals
-
+@physicsnemo.sym.main(config_path="conf", config_name="config")
 def create_enhanced_solver(cfg: PhysicsNeMoConfig):
     # Define chamber geometry
     chamber = Rectangle(
@@ -62,7 +42,7 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
     )
     
     # Try another PDE
-    magma_pde = BasicMagmaChamberPDE()
+    magma_pde = SimplifiedMagmaChamberPDE()
     nodes = magma_pde.make_nodes() + [network.make_node(name="enhanced_magma_net")]
 
     # Create domain
@@ -238,6 +218,3 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
     # Create and run solver
     solver = Solver(cfg, domain)
     solver.solve()
-
-if __name__ == "__main__":
-    create_enhanced_solver()
