@@ -49,7 +49,7 @@ class ChamberPlotter(ValidatorPlotter):
             plt.subplot(1, 3, 2)
             plt.title("Predicted Temperature")
             im2 = plt.imshow(temp_pred_interp.T, origin="lower", extent=extent, 
-                           cmap='hot', vmin=0, vmax=1600)
+                           cmap='hot', vmin=0, vmax=10000)
             plt.colorbar(im2, label="Temperature (°C)")
             plt.xlabel("X (m)")
             plt.ylabel("Y (m)")

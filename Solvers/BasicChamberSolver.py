@@ -30,7 +30,7 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         point_1=(0, 0), 
         point_2=(20000, 6000), # 20 x 6 km
         parameterization=Parameterization({
-            Parameter("time"): (0.0, 60.0)  # 60 seconds
+            Parameter("time"): (0.0, 14400)  # 4 hours
         })
     )
 
@@ -39,6 +39,8 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         input_keys=[Key("time"), Key("x"), Key("y")],
         output_keys=[Key("Temperature"), Key("Pressure"), Key("Xvelocity"), Key("Yvelocity")],
         cfg=cfg.arch.fully_connected,
+        layer_size=256,
+        nr_layers=8
     )
     
     # Try another PDE
@@ -55,15 +57,17 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         nodes=nodes,
         geometry=chamber,
         outvar={
-            "Temperature": 25.0,  # Fixed temperature at walls
+            "Temperature": 25.0,    # Fixed temperature at walls
+            "Pressure": 0.0,        # Fixed pressure at the walls
             "Xvelocity": 0.0,       # No-slip condition
             "Yvelocity": 0.0        # No-slip condition
         },
         batch_size=cfg.batch_size.boundary,
         lambda_weighting={
-            "Temperature": 3.0, 
-            "Xvelocity": 3.0, 
-            "Yvelocity": 3.0
+            "Temperature": 1.0, 
+            "Xvelocity": 1.0, 
+            "Yvelocity": 1.0,
+            "Pressure": 2.0,
         }
     )
     domain.add_constraint(boundary, "boundary")
@@ -81,10 +85,10 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         },
         batch_size=cfg.batch_size.interior,
         lambda_weighting={
-            "darcy_x": 10.0,
-            "darcy_y": 12.0,
-            "continuity": 10.0,
-            "heat_equation": 0.0
+            "darcy_x": 1e-3,
+            "darcy_y": 1e-3,
+            "continuity": 1.0,
+            "heat_equation": 1.0
         }
     )
     domain.add_constraint(interior, "interior")
@@ -116,7 +120,7 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
     domain.add_constraint(interior_initial, "initial_velocities")
 
     # --- Separate visualization validator (no constraints on evolution) ---
-    viz_times = np.array([0, 15, 30, 45, 60], dtype=float)
+    viz_times = np.array([0, 3600, 7200, 10800, 14400], dtype=float)
     viz_points = chamber.sample_interior(256)
 
     n_viz_times = len(viz_times)
