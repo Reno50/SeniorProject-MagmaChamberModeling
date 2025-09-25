@@ -5,8 +5,6 @@
 # This would be a more complex implementation in NVIDIA physicsnemo
 # showing the coupled thermal-mechanical-chemical system
 
-# docker run --gpus all --shm-size=1g --ulimit memlock=-1 --ulimit stack=67108864 --runtime nvidia --rm -v C:/Users/andre/Downloads:/workspace/downloads -it nvcr.io/nvidia/physicsnemo/physicsnemo:25.06 bash
-
 import torch as nn
 import numpy as np
 from sympy import Symbol, Eq, tanh, And, Or, Function
