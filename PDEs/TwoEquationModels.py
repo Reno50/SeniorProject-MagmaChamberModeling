@@ -6,7 +6,7 @@ class GeothermalSystemPDE(PDE):
     PDE system based on the ground-water flow and thermal-energy transport equations
     for geothermal/hydrothermal systems with multiphase flow.
     
-    Note: This is quite different from typical magma chamber convection models
+    This is what the paper mentions they use in Hydrotherm simulations
     """
     name = "GeothermalSystem"
     
@@ -20,6 +20,8 @@ class GeothermalSystemPDE(PDE):
         Pressure_steam = Function("Pressure_steam")(time, x, y)  # p_s [Pa]
         Saturation_water = Function("Saturation_water")(time, x, y)  # S_w [dimensionless]
         Saturation_steam = Function("Saturation_steam")(time, x, y)  # S_s [dimensionless]
+        Xvelocity = Function("XVelocity")(time, x, y)      # u [m/s] - snatched from the simple model
+        Yvelocity = Function("YVelocity")(time, x, y)      # v [m/s] - snatched from the simple model
         
         # For simplified 2D case, we might also need velocity components
         # derived from pressure gradients via Darcy's law
@@ -76,6 +78,19 @@ class GeothermalSystemPDE(PDE):
             energy_storage.diff(time) - heat_conduction
             # + heat_advection - q_sh  # Missing terms
         )
+
+        # Momentum equations (Darcy's law for porous medium)
+        # u = -(k/μ) * ∂p/∂x
+        # v = -(k/μ) * (∂p/∂y + ρg)
+        # This one might be wierd - none of these fake things are based on the paper at all
+
+        # I'm gonna replace the Pressure term with:
+        fake_pressure = (Pressure_water * Saturation_water) + (Pressure_steam * Saturation_steam)
+        # and the mu term (which is viscosity) with a saturation-multiplied term
+        fake_viscosity = (Saturation_water * mu_w) + (Saturation_steam * mu_s)
+        # and for rho, lets just use water for now I guess :/
+        self.equations["darcy_x"] = Xvelocity + (k / fake_viscosity) * fake_pressure.diff(x)
+        self.equations["darcy_y"] = Yvelocity + (k / fake_viscosity) * (fake_pressure.diff(y) + rho_w * 9.81)
 
 # Alternative: Simplified single-phase version more suitable for magma chambers
 class SimplifiedMagmaChamberPDE(PDE):
