@@ -39,8 +39,8 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         input_keys=[Key("time"), Key("x"), Key("y")],
         output_keys=[Key("Temperature"), Key("Pressure"), Key("Xvelocity"), Key("Yvelocity")],
         cfg=cfg.arch.fully_connected,
-        layer_size=128,
-        nr_layers=16
+        layer_size=256,
+        nr_layers=32
     )
     
     # Try another PDE
