@@ -27,8 +27,12 @@ cuda_graphs: false
 find_unused_parameters: true
 
 scheduler:
-  decay_rate: 0.95
-  decay_steps: 1500
+  decay_rate: 0.95 
+  #every {decay_steps} the model is allowed to
+  #train this percentage of its current training rate.
+  #This so at .95 every 1500, at 200,000 steps, the
+  #train rate would be basically non-existent.
+  decay_steps: 1500 
 
 training:
   rec_results_freq: 10000
