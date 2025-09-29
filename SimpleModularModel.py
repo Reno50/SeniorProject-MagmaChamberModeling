@@ -10,6 +10,9 @@ import physicsnemo.sym
 
 # Then do python SimpleModularModel.py
 
+# To get the results off the server, run (also I think it is safe to put this IP in a public repo - it isn't publically accessible)
+# scp -r andrew@10.10.129.80:"home/andrew/SeniorProject-MagmaChamberModeling/outputs/SimpleModularModel/validators/validator_temp_t0.0h.png" ./
+
 @physicsnemo.sym.main(config_path="conf", config_name="config")
 def main(cfg: PhysicsNeMoConfig):
     create_enhanced_solver(cfg)

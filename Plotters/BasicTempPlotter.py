@@ -26,13 +26,11 @@ class ChamberPlotter(ValidatorPlotter):
             temp_true = true_outvar["Temperature"][time_mask]
             temp_pred = pred_outvar["Temperature"][time_mask]
 
-            min_temp = true_outvar["Temperature"][time_mask].min()
-            if (pred_outvar["Temperature"][time_mask].min() < min_temp):
-                min_temp = pred_outvar["Temperature"][time_mask].min()
+            min_true_temp = true_outvar["Temperature"][time_mask].min()
+            min_pred_temp = pred_outvar["Temperature"][time_mask].min()
             
-            max_temp = true_outvar["Temperature"][time_mask].max()
-            if (pred_outvar["Temperature"][time_mask].max() > max_temp):
-                max_temp = pred_outvar["Temperature"][time_mask].max()
+            max_true_temp = true_outvar["Temperature"][time_mask].max()
+            max_pred_temp = pred_outvar["Temperature"][time_mask].max()
             
             # Interpolate onto regular grid
             temp_true_interp, temp_pred_interp = self.interpolate_output(
@@ -48,7 +46,7 @@ class ChamberPlotter(ValidatorPlotter):
             plt.subplot(1, 3, 1)
             plt.title("True Temperature")
             im1 = plt.imshow(temp_true_interp.T, origin="lower", extent=extent, 
-                           cmap='hot', vmin=min_temp, vmax=max_temp)
+                           cmap='hot', vmin=min_true_temp, vmax=max_true_temp)
             plt.colorbar(im1, label="Temperature (°C)")
             plt.xlabel("X (m)")
             plt.ylabel("Y (m)")
@@ -57,7 +55,7 @@ class ChamberPlotter(ValidatorPlotter):
             plt.subplot(1, 3, 2)
             plt.title("Predicted Temperature")
             im2 = plt.imshow(temp_pred_interp.T, origin="lower", extent=extent, 
-                           cmap='hot', vmin=min_temp, vmax=max_temp)
+                           cmap='hot', vmin=min_pred_temp, vmax=max_pred_temp)
             plt.colorbar(im2, label="Temperature (°C)")
             plt.xlabel("X (m)")
             plt.ylabel("Y (m)")
