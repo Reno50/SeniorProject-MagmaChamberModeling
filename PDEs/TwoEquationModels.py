@@ -1,6 +1,22 @@
 from sympy import Symbol, Function
 from physicsnemo.sym.eq.pde import PDE
 
+class HydrothermMimicPDE(PDE):
+    """
+    A PDE system made from scratch to replicate the paper's Hydrotherm equations
+    Using the Ground-Water Flow Equation and the Thermal-Energy Transport Equation
+    """
+    def __init__(self):
+        time, x, y = Symbol('time'), Symbol('x'), Symbol('y')
+
+        Temperature = Function("Temperature")(time, x, y)
+
+
+        '''
+        The equation is made up of 4 terms
+        '''
+
+
 class GeothermalSystemPDE(PDE):
     """
     PDE system based on the ground-water flow and thermal-energy transport equations

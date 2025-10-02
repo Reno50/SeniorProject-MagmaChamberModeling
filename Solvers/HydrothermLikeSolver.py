@@ -24,7 +24,8 @@ from physicsnemo.sym.geometry.primitives_2d import Rectangle, Line
 from physicsnemo.sym.geometry.parameterization import Parameterization, Parameter
 from physicsnemo.sym.domain.constraint import (
     PointwiseBoundaryConstraint,
-    PointwiseInteriorConstraint
+    PointwiseInteriorConstraint,
+    PointwiseConstraint,
 )
 from physicsnemo.sym.domain.validator import PointwiseValidator
 from physicsnemo.sym.key import Key
@@ -38,12 +39,13 @@ from Plotters.BasicTempPlotter import ChamberPlotter
 
 @physicsnemo.sym.main(config_path="conf", config_name="config")
 def create_enhanced_solver(cfg: PhysicsNeMoConfig):
+    beginTime, endTime = 0.0, 14400.0 # 4 hours
     # Define chamber geometry
     chamber = Rectangle(
         point_1=(0, 0), 
         point_2=(20000, 6000), # 20 x 6 km
         parameterization=Parameterization({
-            Parameter("time"): (0.0, 14400)  # 4 hours
+            Parameter("time"): (beginTime, endTime) 
         })
     )
 
@@ -52,7 +54,7 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         input_keys=[Key("time"), Key("x"), Key("y")],
         output_keys=[Key("Temperature"), Key("XVelocity"), Key("YVelocity"), Key("Pressure_water"), Key("Pressure_steam"), Key("Saturation_water"), Key("Saturation_steam")],
         cfg=cfg.arch.fully_connected,
-        layer_size=64,
+        layer_size=32,
         nr_layers=16
     )
     
@@ -80,9 +82,9 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         },
         batch_size=cfg.batch_size.boundary,
         lambda_weighting={
-            "Temperature": 2.0,
-            "Pressure_water": 1.0,
-            "Pressure_steam": 1.0,
+            "Temperature": 1,
+            "Pressure_water": 1e-2,
+            "Pressure_steam": 1e-2,
             "Saturation_steam": 1e-3,
             "Saturation_water": 1e-3,
             "XVelocity": 1.0,
@@ -135,19 +137,47 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         },
         batch_size=256,
         lambda_weighting={
-            "XVelocity": 1.0,
-            "YVelocity": 1.0,
-            "Temperature": 10.0,
-            "Pressure_water": 1.0,
-            "Pressure_steam": 1.0,
-            "Saturation_steam": 1.0,
-            "Saturation_water": 1.0,
+            "XVelocity": 0.5,
+            "YVelocity": 0.5,
+            "Temperature": 1.0,
+            "Pressure_water": 1e-3,
+            "Pressure_steam": 1e-3,
+            "Saturation_steam": 1e-3,
+            "Saturation_water": 1e-3,
         }
     )
     domain.add_constraint(interior_initial, "initial_velocities")
 
+    # The most important constraints - based on the samples in the paper
+    # hence the increased lambda weighting
+
+    geo_samples = [
+        {"x": 250.0, "y": 3000.0, "time": 7200.0, "Temperature": 600.0}, # 14721Ac
+        {"x": 10000.0, "y": 3000.0, "time": 14400.0, "Temperature": 550.0},
+    ]
+
+    geo_constraint = PointwiseConstraint.from_numpy(
+        nodes=nodes,
+        invar={
+            "time": np.array([s["time"] for s in geo_samples]).reshape(-1, 1),
+            "x": np.array([s["x"] for s in geo_samples]).reshape(-1, 1),
+            "y": np.array([s["y"] for s in geo_samples]).reshape(-1, 1),
+        },
+        outvar={
+            "Temperature": np.array([s["Temperature"] for s in geo_samples]).reshape(-1, 1),
+        },
+        batch_size=len(geo_samples),
+        lambda_weighting={
+            "Temperature": np.full((len(geo_samples), 1), 10.0)  # per-point weights
+        },
+        shuffle=False,  # probably want deterministic since data is small
+        drop_last=False
+    )
+
+    domain.add_constraint(geo_constraint, "geological_samples")
+
     # --- Separate visualization validator (no constraints on evolution) ---
-    viz_times = np.array([0, 3600, 7200, 10800, 14400], dtype=float)
+    viz_times = np.array([beginTime, beginTime + (endTime / 4), beginTime + (endTime / 2), beginTime + ((3 * endTime) / 4), endTime], dtype=float)
     viz_points = chamber.sample_interior(512)
 
     n_viz_times = len(viz_times)

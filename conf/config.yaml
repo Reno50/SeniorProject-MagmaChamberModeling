@@ -34,6 +34,9 @@ scheduler:
   #train rate would be basically non-existent.
   decay_steps: 5000
 
+optimizer:
+  lr: 1e-2   # control training rate, default 1e-3
+
 training:
   rec_results_freq: 10000
   rec_constraint_freq: 10000

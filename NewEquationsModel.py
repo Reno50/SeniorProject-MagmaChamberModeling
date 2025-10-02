@@ -2,7 +2,8 @@ from Solvers.HydrothermLikeSolver import create_enhanced_solver
 from physicsnemo.sym.hydra import instantiate_arch, PhysicsNeMoConfig
 import physicsnemo.sym
 
-# Run with docker run --gpus all --shm-size=1g --ulimit memlock=-1 --ulimit stack=67108864 --runtime nvidia --rm -v ./:/workspace -it nvcr.io/nvidia/physicsnemo/physicsnemo:25.08 bash
+# Run with 
+# docker run --gpus all --shm-size=1g --ulimit memlock=-1 --ulimit stack=67108864 --runtime nvidia --rm -v ./:/workspace -it nvcr.io/nvidia/physicsnemo/physicsnemo:25.08 bash
 
 # The whole --gpus all thing seems to be having problem so for now I just took it out
 # Needs fix ASAP because, duh
