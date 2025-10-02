@@ -83,10 +83,10 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         batch_size=cfg.batch_size.boundary,
         lambda_weighting={
             "Temperature": 1,
-            "Pressure_water": 1e-2,
-            "Pressure_steam": 1e-2,
-            "Saturation_steam": 1e-3,
-            "Saturation_water": 1e-3,
+            "Pressure_water": 1e-1,
+            "Pressure_steam": 1e-1,
+            "Saturation_steam": 1e-2,
+            "Saturation_water": 1e-2,
             "XVelocity": 1.0,
             "YVelocity": 1.0,
         }
@@ -108,8 +108,8 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         lambda_weighting={
             "mass_conservation": 1.0,
             "energy_conservation": 1.0,
-            "darcy_x": 1e-3,
-            "darcy_y": 1e-3,
+            "darcy_x": 1e-1,
+            "darcy_y": 1e-1,
         }
     )
     domain.add_constraint(interior, "interior")
@@ -140,10 +140,10 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
             "XVelocity": 0.5,
             "YVelocity": 0.5,
             "Temperature": 1.0,
-            "Pressure_water": 1e-3,
-            "Pressure_steam": 1e-3,
-            "Saturation_steam": 1e-3,
-            "Saturation_water": 1e-3,
+            "Pressure_water": 1e-2,
+            "Pressure_steam": 1e-2,
+            "Saturation_steam": 1e-2,
+            "Saturation_water": 1e-2,
         }
     )
     domain.add_constraint(interior_initial, "initial_velocities")
