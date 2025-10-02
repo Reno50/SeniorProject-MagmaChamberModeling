@@ -85,8 +85,8 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
             "Temperature": 1,
             "Pressure_water": 1e-1,
             "Pressure_steam": 1e-1,
-            "Saturation_steam": 1e-2,
-            "Saturation_water": 1e-2,
+            "Saturation_steam": 1,
+            "Saturation_water": 1,
             "XVelocity": 1.0,
             "YVelocity": 1.0,
         }
@@ -106,8 +106,8 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         },
         batch_size=cfg.batch_size.interior,
         lambda_weighting={
-            "mass_conservation": 1.0,
-            "energy_conservation": 1.0,
+            "mass_conservation": 2.0,
+            "energy_conservation": 2.0,
             "darcy_x": 1e-1,
             "darcy_y": 1e-1,
         }
@@ -140,10 +140,10 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
             "XVelocity": 0.5,
             "YVelocity": 0.5,
             "Temperature": 1.0,
-            "Pressure_water": 1e-2,
-            "Pressure_steam": 1e-2,
-            "Saturation_steam": 1e-2,
-            "Saturation_water": 1e-2,
+            "Pressure_water": 1e-1,
+            "Pressure_steam": 1e-1,
+            "Saturation_steam": 1e-1,
+            "Saturation_water": 1e-1,
         }
     )
     domain.add_constraint(interior_initial, "initial_velocities")
@@ -168,7 +168,7 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         },
         batch_size=len(geo_samples),
         lambda_weighting={
-            "Temperature": np.full((len(geo_samples), 1), 10.0)  # per-point weights
+            "Temperature": np.full((len(geo_samples), 1), 0.0)  # per-point weights
         },
         shuffle=False,  # probably want deterministic since data is small
         drop_last=False
