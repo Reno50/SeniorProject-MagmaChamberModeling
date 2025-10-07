@@ -121,7 +121,7 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
     # Simple interior constraint at t=0
     interior_t0 = Rectangle(
         point_1=(0, 0), 
-        point_2=(20000, 6000),
+        point_2=(1, 1),
         parameterization=Parameterization({
             Parameter("time"): 0.0
         })
