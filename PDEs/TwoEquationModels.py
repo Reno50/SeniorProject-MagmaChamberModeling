@@ -52,7 +52,7 @@ class GeothermalSystemPDE(PDE):
         # physical constants (tune / replace with functions later)
         phi = 0.1           # porosity
         rho_w = 1000.0      # kg/m^3
-        rho_s = 0.6         # kg/m^3 (placeholder)
+        rho_s = 600         # kg/m^3 (placeholder)
         rho_r = 2700.0      # rock density kg/m^3
         k_perm = 1e-13      # permeability m^2
         k_rw = 1.0          # rel perm water
