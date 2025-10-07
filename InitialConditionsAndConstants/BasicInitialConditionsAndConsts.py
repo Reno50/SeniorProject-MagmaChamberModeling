@@ -15,6 +15,6 @@ def generate_initial_temps(x, y) -> list[int]: # A list of temperatures at each 
         if (x_flat[i] > (6000/chamber_width)) or (y_flat[i] > (3000/chamber_height)):
             returnVals[i] = 20.0 + 25.0 * (y_flat[i] / (1000.0/chamber_height))
         else:
-            returnVals[i] = 900 - (700 * y_flat[i] / (6000/chamber_height)) # pluton is 900 degrees celcius, we want a smooth transition though
+            returnVals[i] = 900 - (700 * y_flat[i]) - (700 * x_flat[i])
     
     return returnVals
