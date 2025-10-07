@@ -14,10 +14,6 @@ def generate_initial_temps(x, y) -> list[int]: # A list of temperatures at each 
         if ((x_flat[i] > 6000) or (y_flat[i] > 3000)):
             returnVals[i] = 20.0 + 25.0 * (y_flat[i] / 1000.0)
         else:
-            returnVals[i] = 900 # pluton is 900 degrees celcius
+            returnVals[i] = 900 - (700 * y_flat[i] / 6000) # pluton is 900 degrees celcius, we want a smooth transition though
     
     return returnVals
-
-class Constants:
-    def __init__(self):
-        self.a = 1 # Nothing yet

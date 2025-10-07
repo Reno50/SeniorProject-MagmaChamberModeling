@@ -11,6 +11,7 @@ class ChamberPlotter(ValidatorPlotter):
         times = np.unique(invar["time"][:,0])
         # Endtime = 300kr
         endTime = 300000 # in years
+        chamber_width, chamber_height = 20000, 6000 # Same for chamber size - normalize to 0 - 1
         figures = []
 
         for t in times:

@@ -1,27 +1,8 @@
-from sympy import Symbol, Function
-from physicsnemo.sym.eq.pde import PDE
-
-class HydrothermMimicPDE(PDE):
-    """
-    A PDE system made from scratch to replicate the paper's Hydrotherm equations
-    Using the Ground-Water Flow Equation and the Thermal-Energy Transport Equation
-    """
-    def __init__(self):
-        time, x, y = Symbol('time'), Symbol('x'), Symbol('y')
-
-        Temperature = Function("Temperature")(time, x, y)
-
-        '''
-        The equation is made up of 4 terms
-        First, (Porosity * (Water_Density*Saturation_Of_Water + Steam_Density*Saturation_Of_Water_In_Steam)).diff(time)
-        Plus, 
-        '''
-
 from sympy import Symbol, Function, Number
 from physicsnemo.sym.eq.pde import PDE
 
 class GeothermalSystemPDE(PDE):
-    """
+    '''
     Geothermal / hydrothermal multiphase PDE system with Darcy + advective energy terms.
 
     Conventions:
@@ -30,7 +11,7 @@ class GeothermalSystemPDE(PDE):
     - q_w, q_s are volumetric fluxes (m/s) computed from Darcy's law
     - mass conservation uses rho * q fluxes
     - energy equation uses conductive + advective enthalpy fluxes
-    """
+    '''
 
     name = "GeothermalSystem"
 
@@ -52,7 +33,7 @@ class GeothermalSystemPDE(PDE):
         # physical constants (tune / replace with functions later)
         phi = 0.1           # porosity
         rho_w = 1000.0      # kg/m^3
-        rho_s = 600         # kg/m^3 (placeholder)
+        rho_s = 600.0       # kg/m^3 (placeholder)
         rho_r = 2700.0      # rock density kg/m^3
         k_perm = 1e-13      # permeability m^2
         k_rw = 1.0          # rel perm water
@@ -73,7 +54,6 @@ class GeothermalSystemPDE(PDE):
         q_sf = 0            # mass source (kg/(m^3 s) or consistent units depending on formulation)
         q_sh = 0            # heat source (W/m^3)
 
-        # --------------------------------------------------------------------------------
         # Darcy volumetric flux q = - (k_perm * k_rel / mu) * grad( p + rho * g * y )
         # note: grad( rho*g*y ) = rho*g in y direction => accounting for gravity
         # compute prefactors
@@ -120,34 +100,22 @@ class GeothermalSystemPDE(PDE):
         energy_storage = phi*(rho_w*h_w*S_w + rho_s*h_s*S_s) + (1-phi)*rho_r*h_r
         energy_eq = energy_storage.diff(time) + conduction_div + adv_div - q_sh
 
-        # --------------------------------------------------------------------------------
-        # build equations dict
         self.equations = {}
         self.equations["mass_conservation"] = mass_eq
         self.equations["energy_conservation"] = energy_eq
 
-        # --------------------------------------------------------------------------------
-        # Optionally expose Darcy residuals so network must learn velocities consistent with pressure:
-        # If velocities are outputs, enforce Xv - q_total_x = 0, Yv - q_total_y = 0
+        # Enforce Xv - q_total_x = 0, Yv - q_total_y = 0
         # where q_total = q_w + q_s (total volumetric flux)
-        if expose_velocities:
-            q_total_x = q_w_x + q_s_x
-            q_total_y = q_w_y + q_s_y
-            # Darcy residuals for velocity outputs
-            self.equations["darcy_x"] = Xv - q_total_x
-            self.equations["darcy_y"] = Yv - q_total_y
-        else:
-            # if you still want to monitor consistency, you could expose a diagnostic residual (optional)
-            # self.equations["darcy_diagnostic_x"] = q_w_x + q_s_x
-            # self.equations["darcy_diagnostic_y"] = q_w_y + q_s_y
-            pass
+        q_total_x = q_w_x + q_s_x
+        q_total_y = q_w_y + q_s_y
+        # Darcy residuals for velocity outputs
+        self.equations["darcy_x"] = Xv - q_total_x
+        self.equations["darcy_y"] = Yv - q_total_y
 
-        # --------------------------------------------------------------------------------
         # Notes:
         # - Replace constant rho_s, h_* with temperature/pressure dependent functions for higher fidelity.
         # - Units must be consistent. Ensure q_sf and q_sh have correct units for your formulation.
-        # - You might want to nondimensionalize or rescale variables (length, time, temperature) for training stability.
-
+        
 """
 class GeothermalSystemPDE(PDE):
     '''
@@ -163,18 +131,18 @@ class GeothermalSystemPDE(PDE):
         time, x, y = Symbol('time'), Symbol('x'), Symbol('y')
 
         # Primary field variables
-        Temperature = Function("Temperature")(time, x, y)  # T [°C or K]
-        Pressure_water = Function("Pressure_water")(time, x, y)  # p_w [Pa]
-        Pressure_steam = Function("Pressure_steam")(time, x, y)  # p_s [Pa]
-        Saturation_water = Function("Saturation_water")(time, x, y)  # S_w [dimensionless]
-        Saturation_steam = Function("Saturation_steam")(time, x, y)  # S_s [dimensionless]
-        Xvelocity = Function("XVelocity")(time, x, y)      # u [m/s] - snatched from the simple model
-        Yvelocity = Function("YVelocity")(time, x, y)      # v [m/s] - snatched from the simple model
+        Temperature = Function("Temperature")(time, x, y)
+        Pressure_water = Function("Pressure_water")(time, x, y)
+        Pressure_steam = Function("Pressure_steam")(time, x, y)
+        Saturation_water = Function("Saturation_water")(time, x, y)
+        Saturation_steam = Function("Saturation_steam")(time, x, y)
+        Xvelocity = Function("XVelocity")(time, x, y)
+        Yvelocity = Function("YVelocity")(time, x, y)
         
         # For simplified 2D case, we might also need velocity components
         # derived from pressure gradients via Darcy's law
         
-        # Physical parameters (these would typically be spatially variable)
+        # Physical parameters (some of these might have equation definitions later on)
         phi = 0.1           # Porosity [dimensionless]
         rho_w = 1000.0      # Water density [kg/m³]
         rho_s = 0.6         # Steam density [kg/m³] (pressure/temperature dependent)
@@ -220,11 +188,10 @@ class GeothermalSystemPDE(PDE):
         heat_conduction = K_a * (Temperature.diff(x, 2) + Temperature.diff(y, 2))
         
         # Advective heat transfer (simplified - needs velocity fields)
-        # heat_advection = phi * (S_w * rho_w * h_w * V_w + S_s * rho_s * h_s * V_s)
+        heat_advection = phi * (Saturation_water * rho_w * h_w * Velocity_w + Saturation_steam * rho_s * h_s * Velocity_s)
         
         self.equations["energy_conservation"] = (
-            energy_storage.diff(time) - heat_conduction
-            # + heat_advection - q_sh  # Missing terms
+            energy_storage.diff(time) - heat_conduction + heat_advection - q_sh  # Missing terms
         )
 
         # Momentum equations (Darcy's law for porous medium)

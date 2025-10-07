@@ -42,10 +42,12 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
     beginTime, endTime = 0.0, 1.0 # We are just representing 1.0 as the 'end time'
     # I'm just going to arbitrarily say we'll finish it at, say, 300 kyr
 
+    chamber_width, chamber_height = 20000, 6000 # Same for chamber size - normalize to 0 - 1
+
     # Define chamber geometry
     chamber = Rectangle(
         point_1=(0, 0), 
-        point_2=(20000, 6000), # 20 x 6 km
+        point_2=(1, 1),
         parameterization=Parameterization({
             Parameter("time"): (beginTime, endTime) 
         })
@@ -56,15 +58,15 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         input_keys=[Key("time"), Key("x"), Key("y")],
         output_keys=[Key("Temperature"), Key("XVelocity"), Key("YVelocity"), Key("Pressure_water"), Key("Pressure_steam"), Key("Saturation_water"), Key("Saturation_steam")],
         cfg=cfg.arch.fully_connected,
-        layer_size=32,
-        nr_layers=16
+        layer_size=128,
+        nr_layers=8
     )
+
+    print(network)
     
-    # Try another PDE
     magma_pde = GeothermalSystemPDE()
     nodes = magma_pde.make_nodes() + [network.make_node(name="enhanced_magma_net")]
 
-    # Create domain to use 
     domain = Domain()
 
     # Constraints section 
@@ -77,25 +79,25 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
             "Temperature": 25.0,    # Fixed temperature at walls
             "Pressure_water": 0.0,        # Fixed pressure at the walls
             "Pressure_steam": 0.0,        # Fixed pressure at the walls
-            "Saturation_steam": 0.0,       # ?
-            "Saturation_water": 0.0,       # ?
+            "Saturation_steam": 0.0,       
+            "Saturation_water": 0.0,       
             "XVelocity": 0.0,              # No movement at the walls
             "YVelocity": 0.0,              # No movement at the walls
         },
         batch_size=cfg.batch_size.boundary,
         lambda_weighting={
-            "Temperature": 20,
-            "Pressure_water": 1e-1,
-            "Pressure_steam": 1e-1,
-            "Saturation_steam": 1,
-            "Saturation_water": 1,
-            "XVelocity": 1.0,
-            "YVelocity": 1.0,
+            "Temperature": 0.5,
+            "Pressure_water": 1e-2,
+            "Pressure_steam": 1e-2,
+            "Saturation_steam": 1e-1,
+            "Saturation_water": 1e-1,
+            "XVelocity": 1e-1,
+            "YVelocity": 1e-1,
         }
     )
     domain.add_constraint(boundary, "boundary")
 
-    # --- Interior PDE Constraints ---
+    # Interior PDE Constraints
     # This enforces the PDE equations throughout the interior
     interior = PointwiseInteriorConstraint(
         nodes=nodes,
@@ -115,7 +117,8 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         }
     )
     domain.add_constraint(interior, "interior")
-
+    
+    # Simple interior constraint at t=0
     interior_t0 = Rectangle(
         point_1=(0, 0), 
         point_2=(20000, 6000),
@@ -123,8 +126,7 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
             Parameter("time"): 0.0
         })
     )
-    
-    # Simple interior constraint at t=0 - let network interpolate
+
     interior_initial = PointwiseInteriorConstraint(
         nodes=nodes,
         geometry=interior_t0,
@@ -137,11 +139,11 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
             "XVelocity": 0.0,
             "YVelocity": 0.0,
         },
-        batch_size=256,
+        batch_size=cfg.batch_size.interior,
         lambda_weighting={
             "XVelocity": 3.5,
             "YVelocity": 3.5,
-            "Temperature": 30.0,
+            "Temperature": 5.0,
             "Pressure_water": 1,
             "Pressure_steam": 1,
             "Saturation_steam": 1,
@@ -157,36 +159,36 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
     temperature_samples = [ # From figure 29, page 179 - training on their *model output* just for grins
         # 20 kyr
         {"x": 0.0, "y": 0.0, "time": beginTime + (endTime / (300/20)), "Temperature": 20},
-        {"x": 0.0, "y": 1000.0, "time": beginTime + (endTime / (300/20)), "Temperature": 50.0},
-        {"x": 0.0, "y": 2000.0, "time": beginTime + (endTime / (300/20)), "Temperature": 190.0},
-        {"x": 0.0, "y": 3000.0, "time": beginTime + (endTime / (300/20)), "Temperature": 460.0},
-        {"x": 0.0, "y": 4000.0, "time": beginTime + (endTime / (300/20)), "Temperature": 730.0},
-        {"x": 0.0, "y": 5000.0, "time": beginTime + (endTime / (300/20)), "Temperature": 880.0},
-        {"x": 0.0, "y": 6000.0, "time": beginTime + (endTime / (300/20)), "Temperature": 900.0},
+        {"x": 0.0, "y": 1 / 6, "time": beginTime + (endTime / (300/20)), "Temperature": 50.0},
+        {"x": 0.0, "y": 2 / 6, "time": beginTime + (endTime / (300/20)), "Temperature": 190.0},
+        {"x": 0.0, "y": 3 / 6, "time": beginTime + (endTime / (300/20)), "Temperature": 460.0},
+        {"x": 0.0, "y": 4 / 6, "time": beginTime + (endTime / (300/20)), "Temperature": 730.0},
+        {"x": 0.0, "y": 5 / 6, "time": beginTime + (endTime / (300/20)), "Temperature": 880.0},
+        {"x": 0.0, "y": 1, "time": beginTime + (endTime / (300/20)), "Temperature": 900.0},
         # 120 kyr
         {"x": 0.0, "y": 0.0, "time": beginTime + (endTime / (300/120)), "Temperature": 20},
-        {"x": 0.0, "y": 1000.0, "time": beginTime + (endTime / (300/120)), "Temperature": 250.0},
-        {"x": 0.0, "y": 2000.0, "time": beginTime + (endTime / (300/120)), "Temperature": 350.0},
-        {"x": 0.0, "y": 3000.0, "time": beginTime + (endTime / (300/120)), "Temperature": 360.0},
-        {"x": 0.0, "y": 4000.0, "time": beginTime + (endTime / (300/120)), "Temperature": 530.0},
-        {"x": 0.0, "y": 5000.0, "time": beginTime + (endTime / (300/120)), "Temperature": 650.0},
-        {"x": 0.0, "y": 6000.0, "time": beginTime + (endTime / (300/120)), "Temperature": 700.0},
+        {"x": 0.0, "y": 1 / 6, "time": beginTime + (endTime / (300/120)), "Temperature": 250.0},
+        {"x": 0.0, "y": 2 / 6, "time": beginTime + (endTime / (300/120)), "Temperature": 350.0},
+        {"x": 0.0, "y": 3 / 6, "time": beginTime + (endTime / (300/120)), "Temperature": 360.0},
+        {"x": 0.0, "y": 4 / 6, "time": beginTime + (endTime / (300/120)), "Temperature": 530.0},
+        {"x": 0.0, "y": 5 / 6, "time": beginTime + (endTime / (300/120)), "Temperature": 650.0},
+        {"x": 0.0, "y": 6 / 6, "time": beginTime + (endTime / (300/120)), "Temperature": 700.0},
         # 175 kyr
         {"x": 0.0, "y": 0.0, "time": beginTime + (endTime / (300/175)), "Temperature": 20},
-        {"x": 0.0, "y": 1000.0, "time": beginTime + (endTime / (300/175)), "Temperature": 240.0},
-        {"x": 0.0, "y": 2000.0, "time": beginTime + (endTime / (300/175)), "Temperature": 340.0},
-        {"x": 0.0, "y": 3000.0, "time": beginTime + (endTime / (300/175)), "Temperature": 380.0},
-        {"x": 0.0, "y": 4000.0, "time": beginTime + (endTime / (300/175)), "Temperature": 480.0},
-        {"x": 0.0, "y": 5000.0, "time": beginTime + (endTime / (300/175)), "Temperature": 560.0},
-        {"x": 0.0, "y": 6000.0, "time": beginTime + (endTime / (300/175)), "Temperature": 600.0},
+        {"x": 0.0, "y": 1 / 6, "time": beginTime + (endTime / (300/175)), "Temperature": 240.0},
+        {"x": 0.0, "y": 2 / 6, "time": beginTime + (endTime / (300/175)), "Temperature": 340.0},
+        {"x": 0.0, "y": 3 / 6, "time": beginTime + (endTime / (300/175)), "Temperature": 380.0},
+        {"x": 0.0, "y": 4 / 6, "time": beginTime + (endTime / (300/175)), "Temperature": 480.0},
+        {"x": 0.0, "y": 5 / 6, "time": beginTime + (endTime / (300/175)), "Temperature": 560.0},
+        {"x": 0.0, "y": 1, "time": beginTime + (endTime / (300/175)), "Temperature": 600.0},
         # 300 kyr
         {"x": 0.0, "y": 0.0, "time": beginTime + (endTime / (300/20)), "Temperature": 20},
-        {"x": 0.0, "y": 1000.0, "time": beginTime + (endTime / (300/20)), "Temperature": 130.0},
-        {"x": 0.0, "y": 2000.0, "time": beginTime + (endTime / (300/20)), "Temperature": 250.0},
-        {"x": 0.0, "y": 3000.0, "time": beginTime + (endTime / (300/20)), "Temperature": 320.0},
-        {"x": 0.0, "y": 4000.0, "time": beginTime + (endTime / (300/20)), "Temperature": 380.0},
-        {"x": 0.0, "y": 5000.0, "time": beginTime + (endTime / (300/20)), "Temperature": 430.0},
-        {"x": 0.0, "y": 6000.0, "time": beginTime + (endTime / (300/20)), "Temperature": 450.0},
+        {"x": 0.0, "y": 1 / 6, "time": beginTime + (endTime / (300/20)), "Temperature": 130.0},
+        {"x": 0.0, "y": 2 / 6, "time": beginTime + (endTime / (300/20)), "Temperature": 250.0},
+        {"x": 0.0, "y": 3 / 6, "time": beginTime + (endTime / (300/20)), "Temperature": 320.0},
+        {"x": 0.0, "y": 4 / 6, "time": beginTime + (endTime / (300/20)), "Temperature": 380.0},
+        {"x": 0.0, "y": 5 / 6, "time": beginTime + (endTime / (300/20)), "Temperature": 430.0},
+        {"x": 0.0, "y": 1, "time": beginTime + (endTime / (300/20)), "Temperature": 450.0},
     ]
 
     geo_constraint = PointwiseConstraint.from_numpy(
@@ -201,7 +203,7 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         },
         batch_size=len(temperature_samples),
         lambda_weighting={
-            "Temperature": np.full((len(temperature_samples), 1), 50.0)  # per-point weights
+            "Temperature": np.full((len(temperature_samples), 1), 5.0)  # per-point weights
         },
         shuffle=False,  # probably want deterministic since data is small
         drop_last=False
@@ -222,16 +224,16 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         "y": np.repeat(viz_points["y"], n_viz_times, axis=0),
     }
 
-    # Dummy values just for plotter compatibility
-    dummy_temps = generate_initial_temps(
+    # Initial temperatures for visualizer
+    initial_temps = generate_initial_temps(
         viz_invar["x"].flatten(), 
         viz_invar["y"].flatten()
     )
 
     viz_outvar = {
-        "Temperature": dummy_temps,  # Just for plotter, not training
-        "XVelocity": np.zeros_like(dummy_temps),
-        "YVelocity": np.zeros_like(dummy_temps),
+        "Temperature": initial_temps,  # Just for plotter, not training
+        "XVelocity": np.zeros_like(initial_temps),
+        "YVelocity": np.zeros_like(initial_temps),
     }
 
     # Visualization validator - shows what network learned over time
