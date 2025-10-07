@@ -101,13 +101,8 @@ class GeothermalSystemPDE(PDE):
         # mass storage term
         mass_storage = phi * (rho_w * S_w + rho_s * S_s)
 
-        # mass conservation residual: ∂/∂t(storage) - ∇·(ρ q) - q_sf = 0
-        mass_eq = mass_storage.diff(time) - (div_rhoq_w + div_rhoq_s) - q_sf
-
-        # --------------------------------------------------------------------------------
-        # Energy: storage + conduction + advective enthalpy flux divergence
-        # energy_storage = φ(ρ_w h_w S_w + ρ_s h_s S_s) + (1-φ) ρ_r h_r
-        energy_storage = phi * (rho_w * h_w * S_w + rho_s * h_s * S_s) - (1 - phi) * rho_r * h_r
+        # MASS: d/dt(mass_storage) + div(rho*q) - q_sf = 0
+        mass_eq = mass_storage.diff(time) + (div_rhoq_w + div_rhoq_s) - q_sf
 
         # conduction divergence: ∇·(-K_a ∇T) = -K_a * Laplacian(T)
         conduction_div = - (K_a * T.diff(x, 2) + K_a * T.diff(y, 2))
@@ -120,8 +115,10 @@ class GeothermalSystemPDE(PDE):
 
         adv_div = adv_w_x.diff(x) + adv_w_y.diff(y) + adv_s_x.diff(x) + adv_s_y.diff(y)
 
-        # energy residual: ∂/∂t(storage) - conduction_div - adv_div - q_sh = 0
-        energy_eq = energy_storage.diff(time) - conduction_div - adv_div - q_sh
+        # ENERGY: d/dt(energy_storage) + div( -K_a * grad(T) ) + div( advective_enthalpy ) - q_sh = 0
+        # where conduction_div = -K_a * Laplacian(T)
+        energy_storage = phi*(rho_w*h_w*S_w + rho_s*h_s*S_s) + (1-phi)*rho_r*h_r
+        energy_eq = energy_storage.diff(time) + conduction_div + adv_div - q_sh
 
         # --------------------------------------------------------------------------------
         # build equations dict

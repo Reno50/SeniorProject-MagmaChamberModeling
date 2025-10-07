@@ -39,7 +39,9 @@ from Plotters.BasicTempPlotter import ChamberPlotter
 
 @physicsnemo.sym.main(config_path="conf", config_name="config")
 def create_enhanced_solver(cfg: PhysicsNeMoConfig):
-    beginTime, endTime = 0.0, 14400.0 # 4 hours
+    beginTime, endTime = 0.0, 1.0 # We are just representing 1.0 as the 'end time'
+    # I'm just going to arbitrarily say we'll finish it at, say, 300 kyr
+
     # Define chamber geometry
     chamber = Rectangle(
         point_1=(0, 0), 
@@ -82,7 +84,7 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         },
         batch_size=cfg.batch_size.boundary,
         lambda_weighting={
-            "Temperature": 1,
+            "Temperature": 20,
             "Pressure_water": 1e-1,
             "Pressure_steam": 1e-1,
             "Saturation_steam": 1,
@@ -108,8 +110,8 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         lambda_weighting={
             "mass_conservation": 2.0,
             "energy_conservation": 2.0,
-            "darcy_x": 1e-1,
-            "darcy_y": 1e-1,
+            "darcy_x": 1,
+            "darcy_y": 1,
         }
     )
     domain.add_constraint(interior, "interior")
@@ -137,13 +139,13 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         },
         batch_size=256,
         lambda_weighting={
-            "XVelocity": 0.5,
-            "YVelocity": 0.5,
-            "Temperature": 1.0,
-            "Pressure_water": 1e-1,
-            "Pressure_steam": 1e-1,
-            "Saturation_steam": 1e-1,
-            "Saturation_water": 1e-1,
+            "XVelocity": 3.5,
+            "YVelocity": 3.5,
+            "Temperature": 30.0,
+            "Pressure_water": 1,
+            "Pressure_steam": 1,
+            "Saturation_steam": 1,
+            "Saturation_water": 1,
         }
     )
     domain.add_constraint(interior_initial, "initial_velocities")
@@ -151,24 +153,55 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
     # The most important constraints - based on the samples in the paper
     # hence the increased lambda weighting
 
-    geo_samples = [
-        {"x": 250.0, "y": 3000.0, "time": 7200.0, "Temperature": 600.0}, # 14721Ac
-        {"x": 10000.0, "y": 3000.0, "time": 14400.0, "Temperature": 550.0},
+    # As stated before, finishing at 300 kyr
+    temperature_samples = [ # From figure 29, page 179 - training on their *model output* just for grins
+        # 20 kyr
+        {"x": 0.0, "y": 0.0, "time": beginTime + (endTime / (300/20)), "Temperature": 20},
+        {"x": 0.0, "y": 1000.0, "time": beginTime + (endTime / (300/20)), "Temperature": 50.0},
+        {"x": 0.0, "y": 2000.0, "time": beginTime + (endTime / (300/20)), "Temperature": 190.0},
+        {"x": 0.0, "y": 3000.0, "time": beginTime + (endTime / (300/20)), "Temperature": 460.0},
+        {"x": 0.0, "y": 4000.0, "time": beginTime + (endTime / (300/20)), "Temperature": 730.0},
+        {"x": 0.0, "y": 5000.0, "time": beginTime + (endTime / (300/20)), "Temperature": 880.0},
+        {"x": 0.0, "y": 6000.0, "time": beginTime + (endTime / (300/20)), "Temperature": 900.0},
+        # 120 kyr
+        {"x": 0.0, "y": 0.0, "time": beginTime + (endTime / (300/120)), "Temperature": 20},
+        {"x": 0.0, "y": 1000.0, "time": beginTime + (endTime / (300/120)), "Temperature": 250.0},
+        {"x": 0.0, "y": 2000.0, "time": beginTime + (endTime / (300/120)), "Temperature": 350.0},
+        {"x": 0.0, "y": 3000.0, "time": beginTime + (endTime / (300/120)), "Temperature": 360.0},
+        {"x": 0.0, "y": 4000.0, "time": beginTime + (endTime / (300/120)), "Temperature": 530.0},
+        {"x": 0.0, "y": 5000.0, "time": beginTime + (endTime / (300/120)), "Temperature": 650.0},
+        {"x": 0.0, "y": 6000.0, "time": beginTime + (endTime / (300/120)), "Temperature": 700.0},
+        # 175 kyr
+        {"x": 0.0, "y": 0.0, "time": beginTime + (endTime / (300/175)), "Temperature": 20},
+        {"x": 0.0, "y": 1000.0, "time": beginTime + (endTime / (300/175)), "Temperature": 240.0},
+        {"x": 0.0, "y": 2000.0, "time": beginTime + (endTime / (300/175)), "Temperature": 340.0},
+        {"x": 0.0, "y": 3000.0, "time": beginTime + (endTime / (300/175)), "Temperature": 380.0},
+        {"x": 0.0, "y": 4000.0, "time": beginTime + (endTime / (300/175)), "Temperature": 480.0},
+        {"x": 0.0, "y": 5000.0, "time": beginTime + (endTime / (300/175)), "Temperature": 560.0},
+        {"x": 0.0, "y": 6000.0, "time": beginTime + (endTime / (300/175)), "Temperature": 600.0},
+        # 300 kyr
+        {"x": 0.0, "y": 0.0, "time": beginTime + (endTime / (300/20)), "Temperature": 20},
+        {"x": 0.0, "y": 1000.0, "time": beginTime + (endTime / (300/20)), "Temperature": 130.0},
+        {"x": 0.0, "y": 2000.0, "time": beginTime + (endTime / (300/20)), "Temperature": 250.0},
+        {"x": 0.0, "y": 3000.0, "time": beginTime + (endTime / (300/20)), "Temperature": 320.0},
+        {"x": 0.0, "y": 4000.0, "time": beginTime + (endTime / (300/20)), "Temperature": 380.0},
+        {"x": 0.0, "y": 5000.0, "time": beginTime + (endTime / (300/20)), "Temperature": 430.0},
+        {"x": 0.0, "y": 6000.0, "time": beginTime + (endTime / (300/20)), "Temperature": 450.0},
     ]
 
     geo_constraint = PointwiseConstraint.from_numpy(
         nodes=nodes,
         invar={
-            "time": np.array([s["time"] for s in geo_samples]).reshape(-1, 1),
-            "x": np.array([s["x"] for s in geo_samples]).reshape(-1, 1),
-            "y": np.array([s["y"] for s in geo_samples]).reshape(-1, 1),
+            "time": np.array([s["time"] for s in temperature_samples]).reshape(-1, 1),
+            "x": np.array([s["x"] for s in temperature_samples]).reshape(-1, 1),
+            "y": np.array([s["y"] for s in temperature_samples]).reshape(-1, 1),
         },
         outvar={
-            "Temperature": np.array([s["Temperature"] for s in geo_samples]).reshape(-1, 1),
+            "Temperature": np.array([s["Temperature"] for s in temperature_samples]).reshape(-1, 1),
         },
-        batch_size=len(geo_samples),
+        batch_size=len(temperature_samples),
         lambda_weighting={
-            "Temperature": np.full((len(geo_samples), 1), 0.0)  # per-point weights
+            "Temperature": np.full((len(temperature_samples), 1), 50.0)  # per-point weights
         },
         shuffle=False,  # probably want deterministic since data is small
         drop_last=False

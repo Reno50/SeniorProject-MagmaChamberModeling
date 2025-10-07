@@ -9,6 +9,8 @@ class ChamberPlotter(ValidatorPlotter):
         
         # Get unique time values
         times = np.unique(invar["time"][:,0])
+        # Endtime = 300kr
+        endTime = 300000 # in years
         figures = []
 
         for t in times:
@@ -39,8 +41,7 @@ class ChamberPlotter(ValidatorPlotter):
 
             # Create figure
             f = plt.figure(figsize=(16, 6), dpi=100)
-            time_hours = t / 3600  # Convert seconds to hours
-            plt.suptitle(f"Magma Chamber at {time_hours:.1f} hours", fontsize=16)
+            plt.suptitle(f"Magma Chamber at {t*endTime:.1f} years", fontsize=16)
             
             # True temperature
             plt.subplot(1, 3, 1)
@@ -71,7 +72,7 @@ class ChamberPlotter(ValidatorPlotter):
             plt.ylabel("Y (m)")
 
             plt.tight_layout()
-            figures.append((f, f"temp_t{time_hours:.1f}h"))
+            figures.append((f, f"temp_t{t*endTime:.1f} years"))
             
         return figures
     
