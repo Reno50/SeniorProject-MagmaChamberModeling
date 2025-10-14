@@ -58,14 +58,14 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         input_keys=[Key("time"), Key("x"), Key("y")],
         output_keys=[Key("Temperature"), Key("XVelocity"), Key("YVelocity"), Key("Pressure_water"), Key("Pressure_steam"), Key("Saturation_water"), Key("Saturation_steam")],
         cfg=cfg.arch.fully_connected,
-        layer_size=128,
-        nr_layers=8
+        layer_size=64,
+        nr_layers=16
     )
-
-    print(network)
     
     magma_pde = GeothermalSystemPDE()
     nodes = magma_pde.make_nodes() + [network.make_node(name="enhanced_magma_net")]
+
+    print(nodes)
 
     domain = Domain()
 
