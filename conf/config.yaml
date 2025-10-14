@@ -38,11 +38,17 @@ optimizer:
   lr: 1e-3   # control training rate, default 1e-3
 
 training:
+#--------Testing if this works or not to use the GPU by default
+  device: cuda 
+  precision: float32
+  amp: true
+  #-------------------------------
   rec_results_freq: 10000
   rec_constraint_freq: 10000
   max_steps : 100000
 
 batch_size:
-  surface: 256
-  boundary: 64
-  interior: 256
+  surface: 512 #was 256
+  boundary: 256 #was 64
+  interior: 1024 #was 256 These could be increased as we use the RTX 6000 ADA
+
