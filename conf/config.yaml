@@ -38,11 +38,6 @@ optimizer:
   lr: 1e-3   # control training rate, default 1e-3
 
 training:
-#--------Testing if this works or not to use the GPU by default
-  device: cuda 
-  precision: float32
-  amp: true
-  #-------------------------------
   rec_results_freq: 10000
   rec_constraint_freq: 10000
   max_steps : 100000
