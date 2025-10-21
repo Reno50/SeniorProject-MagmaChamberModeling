@@ -16,11 +16,12 @@ Saturation_water
 Saturation_steam
 """
 
-from sympy import Symbol, Function
+from sympy import Symbol, Function, Eq
 from physicsnemo.sym.hydra import instantiate_arch, PhysicsNeMoConfig
 from physicsnemo.sym.solver import Solver
 from physicsnemo.sym.domain import Domain
-from physicsnemo.sym.geometry.primitives_2d import Rectangle, Line
+from physicsnemo.sym.geometry.primitives_2d import Rectangle
+from physicsnemo.sym.geometry.primitives_2d import Line
 from physicsnemo.sym.geometry.parameterization import Parameterization, Parameter
 from physicsnemo.sym.domain.constraint import (
     PointwiseBoundaryConstraint,
@@ -65,37 +66,122 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
     magma_pde = GeothermalSystemPDE()
     nodes = magma_pde.make_nodes() + [network.make_node(name="enhanced_magma_net")]
 
-    print(nodes)
-
     domain = Domain()
 
-    # Constraints section 
+    # Constraints section
 
-    # Simple rectangle for a border for now - I don't trust the wall constraints that Claude generated
-    boundary = PointwiseBoundaryConstraint(
+    x, y = Symbol('x'), Symbol('y')
+    left_wall_constraint = PointwiseBoundaryConstraint(
         nodes=nodes,
         geometry=chamber,
+        criteria=Eq(x, 0.0),
+        parameterization={
+            y: (0, 1),
+            Parameter("time"): (beginTime, endTime)
+        },
         outvar={
-            "Temperature": 25.0,    # Fixed temperature at walls
-            "Pressure_water": 0.0,        # Fixed pressure at the walls
-            "Pressure_steam": 0.0,        # Fixed pressure at the walls
-            "Saturation_steam": 0.0,       
-            "Saturation_water": 0.0,       
-            "XVelocity": 0.0,              # No movement at the walls
-            "YVelocity": 0.0,              # No movement at the walls
+            "XVelocity": 0.0 # Such that fluid only can move tangential to the wall
         },
         batch_size=cfg.batch_size.boundary,
         lambda_weighting={
-            "Temperature": 0.5,
-            "Pressure_water": 1e-2,
-            "Pressure_steam": 1e-2,
-            "Saturation_steam": 1e-1,
-            "Saturation_water": 1e-1,
-            "XVelocity": 1e-1,
-            "YVelocity": 1e-1,
+            "XVelocity": 3.0
         }
     )
-    domain.add_constraint(boundary, "boundary")
+    domain.add_constraint(left_wall_constraint, "left_wall_constraint")
+
+    top_wall_constraint = PointwiseBoundaryConstraint(
+        nodes=nodes,
+        geometry=chamber,
+        criteria=Eq(y, 0.0),
+        parameterization={
+            x: (0, 1),
+            Parameter("time"): (beginTime, endTime)
+        },
+        outvar={
+            "Temperature": 20.0,
+            "YVelocity": 0.0
+        },
+        batch_size=cfg.batch_size.boundary,
+        lambda_weighting={
+            "Temperature": 3.0,
+            "YVelocity": 3.0
+        }
+    )
+    domain.add_constraint(top_wall_constraint, "top_wall_constraint")
+
+    right_wall_constraint = PointwiseBoundaryConstraint(
+        nodes=nodes,
+        geometry=chamber,
+        criteria=Eq(x, 1.0),
+        parameterization={
+            y: (0, 1),
+            Parameter("time"): (beginTime, endTime)
+        },
+        outvar={
+            "XVelocity": 0.0
+        },
+        batch_size=cfg.batch_size.boundary,
+        lambda_weighting={
+            "XVelocity": 3.0
+        }
+    )
+    domain.add_constraint(right_wall_constraint, "right_wall_constraint")
+
+    # Right wall is special, it also gets another constraint
+    n_points = cfg.batch_size.boundary  # number of points along the right boundary
+    y_values = np.linspace(0, 1, n_points)
+    temp_values = 20.0 + 150.0 * y_values  # Geothermal gradient
+
+    right_wall_temp_constraint = PointwiseConstraint.from_numpy(
+        nodes=nodes,
+        invar={
+            "time": np.full((n_points, 1), 0.0),
+            "x": np.full((n_points, 1), 1.0),
+            "y": y_values.reshape(-1, 1)
+        },
+        outvar={
+            "Temperature": temp_values
+        },
+        batch_size=cfg.batch_size.boundary, # Very important that this match the number of points in the invar
+    )
+    domain.add_constraint(right_wall_temp_constraint, "right_wall_temp")
+
+    bottom_wall_constraint = PointwiseBoundaryConstraint(
+        nodes=nodes,
+        geometry=chamber,
+        criteria=Eq(y, 1.0),
+        parameterization={
+            x: (0, 1),
+            Parameter("time"): (beginTime, endTime)
+        },
+        outvar={
+            "YVelocity": 0.0,
+            "heat_flux_y": 0.065  # 65 mW/m² = 0.065 W/m²
+        },
+        batch_size=cfg.batch_size.boundary,
+        lambda_weighting={
+            "YVelocity": 3.0,
+            "heat_flux_y": 3.0
+        }
+    )
+    domain.add_constraint(bottom_wall_constraint, "bottom_wall_constraint")
+
+
+    # # Add this so we don't need wall-wide pressure constraints
+    pressure_ref = PointwiseConstraint.from_numpy(
+        nodes=nodes,
+        invar={
+            "time": np.array([0.0]).reshape(1, 1),
+            "x": np.array([0.5]).reshape(1, 1),
+            "y": np.array([0.5]).reshape(1, 1)
+        },
+        outvar={
+            "Pressure_water": np.array([0.0]).reshape(1, 1),
+            "Pressure_steam": np.array([0.0]).reshape(1, 1)
+        },
+        batch_size=1,
+    )
+    #domain.add_constraint(pressure_ref, "pressure_reference")
 
     # Interior PDE Constraints
     # This enforces the PDE equations throughout the interior
@@ -107,6 +193,7 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
             "energy_conservation": 0,
             "darcy_x": 0,
             "darcy_y": 0,
+            "sat_sum": 0,
         },
         batch_size=cfg.batch_size.interior,
         lambda_weighting={
@@ -114,6 +201,7 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
             "energy_conservation": 2.0,
             "darcy_x": 1,
             "darcy_y": 1,
+            "sat_sum": 3.0,
         }
     )
     domain.add_constraint(interior, "interior")
@@ -135,7 +223,7 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
             "Pressure_water": 0.0,     
             "Pressure_steam": 0.0,
             "Saturation_steam": 0.0,
-            "Saturation_water": 0.0,
+            "Saturation_water": 1.0,
             "XVelocity": 0.0,
             "YVelocity": 0.0,
         },
@@ -182,13 +270,13 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         {"x": 0.0, "y": 5 / 6, "time": beginTime + (endTime / (300/175)), "Temperature": 560.0},
         {"x": 0.0, "y": 1, "time": beginTime + (endTime / (300/175)), "Temperature": 600.0},
         # 300 kyr
-        {"x": 0.0, "y": 0.0, "time": beginTime + (endTime / (300/20)), "Temperature": 20},
-        {"x": 0.0, "y": 1 / 6, "time": beginTime + (endTime / (300/20)), "Temperature": 130.0},
-        {"x": 0.0, "y": 2 / 6, "time": beginTime + (endTime / (300/20)), "Temperature": 250.0},
-        {"x": 0.0, "y": 3 / 6, "time": beginTime + (endTime / (300/20)), "Temperature": 320.0},
-        {"x": 0.0, "y": 4 / 6, "time": beginTime + (endTime / (300/20)), "Temperature": 380.0},
-        {"x": 0.0, "y": 5 / 6, "time": beginTime + (endTime / (300/20)), "Temperature": 430.0},
-        {"x": 0.0, "y": 1, "time": beginTime + (endTime / (300/20)), "Temperature": 450.0},
+        {"x": 0.0, "y": 0.0, "time": beginTime + (endTime / (300/300)), "Temperature": 20},
+        {"x": 0.0, "y": 1 / 6, "time": beginTime + (endTime / (300/300)), "Temperature": 130.0},
+        {"x": 0.0, "y": 2 / 6, "time": beginTime + (endTime / (300/300)), "Temperature": 250.0},
+        {"x": 0.0, "y": 3 / 6, "time": beginTime + (endTime / (300/300)), "Temperature": 320.0},
+        {"x": 0.0, "y": 4 / 6, "time": beginTime + (endTime / (300/300)), "Temperature": 380.0},
+        {"x": 0.0, "y": 5 / 6, "time": beginTime + (endTime / (300/300)), "Temperature": 430.0},
+        {"x": 0.0, "y": 1, "time": beginTime + (endTime / (300/300)), "Temperature": 450.0},
     ]
 
     geo_constraint = PointwiseConstraint.from_numpy(

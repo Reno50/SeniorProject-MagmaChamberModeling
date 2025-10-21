@@ -112,145 +112,21 @@ class GeothermalSystemPDE(PDE):
         self.equations["darcy_x"] = Xv - q_total_x
         self.equations["darcy_y"] = Yv - q_total_y
 
+        # To ensure the saturation of steam + water = 1
+        self.equations["sat_sum"] = S_s + S_w - 1
+
+        # Add a Neumann boundary condition node for heat flux
+        # This allows you to constrain the heat flux directly
+        T = Function("Temperature")(Symbol("time"), Symbol("x"), Symbol("y"))
+        K_a = 2.5  # thermal conductivity
+        
+        # Heat flux in y-direction: q_y = -K_a * dT/dy
+        # For bottom boundary with upward flux of 0.065 W/m²:
+        # -K_a * dT/dy = 0.065 => dT/dy = -0.065/2.5 = -0.026 K/m
+        # In normalized coordinates (6 km -> 1): dT/dy_norm = -0.026 * 6000 = -156
+        
+        self.equations["heat_flux_y"] = -K_a * T.diff(Symbol("y"))
+
         # Notes:
         # - Replace constant rho_s, h_* with temperature/pressure dependent functions for higher fidelity.
-        # - Units must be consistent. Ensure q_sf and q_sh have correct units for your formulation.
-        
-"""
-class GeothermalSystemPDE(PDE):
-    '''
-    PDE system based on the ground-water flow and thermal-energy transport equations
-    for geothermal/hydrothermal systems with multiphase flow.
-    
-    This is what the paper mentions they use in Hydrotherm simulations
-    '''
-    name = "GeothermalSystem"
-    
-    def __init__(self):
-        # Symbols
-        time, x, y = Symbol('time'), Symbol('x'), Symbol('y')
-
-        # Primary field variables
-        Temperature = Function("Temperature")(time, x, y)
-        Pressure_water = Function("Pressure_water")(time, x, y)
-        Pressure_steam = Function("Pressure_steam")(time, x, y)
-        Saturation_water = Function("Saturation_water")(time, x, y)
-        Saturation_steam = Function("Saturation_steam")(time, x, y)
-        Xvelocity = Function("XVelocity")(time, x, y)
-        Yvelocity = Function("YVelocity")(time, x, y)
-        
-        # For simplified 2D case, we might also need velocity components
-        # derived from pressure gradients via Darcy's law
-        
-        # Physical parameters (some of these might have equation definitions later on)
-        phi = 0.1           # Porosity [dimensionless]
-        rho_w = 1000.0      # Water density [kg/m³]
-        rho_s = 0.6         # Steam density [kg/m³] (pressure/temperature dependent)
-        rho_r = 2700.0      # Rock density [kg/m³]
-        k = 1e-13           # Permeability [m²]
-        k_rw = 1.0          # Relative permeability water [dimensionless]
-        k_rs = 1.0          # Relative permeability steam [dimensionless]
-        mu_w = 1e-3         # Water viscosity [Pa·s]
-        mu_s = 1e-5         # Steam viscosity [Pa·s]
-        g = 9.81            # Gravity [m/s²]
-        
-        # Thermal properties
-        h_w = 4186          # Specific enthalpy water [J/kg] (temperature dependent)
-        h_s = 2676000       # Specific enthalpy steam [J/kg] (temperature dependent)
-        h_r = 1000          # Specific enthalpy rock [J/kg]
-        K_a = 2.5           # Effective thermal conductivity [W/m·°C]
-        
-        self.equations = {}
-        
-        # Equation (36): Ground-Water Flow Equation
-        # ∂/∂t[φ(ρ_w S_w + ρ_s S_s)] - ∇·(k k_rw ρ_w/μ_w) - ∇·(k k_rs ρ_s/μ_s)[∇p_g + ρ_s g ê_z] - q_sf = 0
-        
-        # Simplified mass conservation (assuming single phase for now)
-        # This is a major simplification - the full equation requires pressure-saturation relationships
-        mass_storage = phi * (rho_w * Saturation_water + rho_s * Saturation_steam)
-        
-        # Darcy flow terms (simplified - should include pressure gradients)
-        # For full implementation, you'd need:
-        # water_flow = k * k_rw * rho_w / mu_w * gradient(Pressure_water + rho_w * g * y)
-        # steam_flow = k * k_rs * rho_s / mu_s * gradient(Pressure_steam + rho_s * g * y)
-        
-        self.equations["mass_conservation"] = mass_storage.diff(time)
-        # Note: This is incomplete - needs flow terms and source terms
-        
-        # Equation (37): Thermal-Energy Transport Equation  
-        # ∂/∂t[φ(ρ_w h_w S_w + ρ_s h_s S_s + (1-φ)ρ_r h_r)] - ∇·K_a I∇T + ∇·φ(S_w ρ_w h_w V_w + S_s ρ_s h_s V_s) - q_sh = 0
-        
-        # Energy storage term
-        energy_storage = (phi * (rho_w * h_w * Saturation_water + rho_s * h_s * Saturation_steam) + 
-                         (1 - phi) * rho_r * h_r)
-        
-        # Conductive heat transfer
-        heat_conduction = K_a * (Temperature.diff(x, 2) + Temperature.diff(y, 2))
-        
-        # Advective heat transfer (simplified - needs velocity fields)
-        heat_advection = phi * (Saturation_water * rho_w * h_w * Velocity_w + Saturation_steam * rho_s * h_s * Velocity_s)
-        
-        self.equations["energy_conservation"] = (
-            energy_storage.diff(time) - heat_conduction + heat_advection - q_sh  # Missing terms
-        )
-
-        # Momentum equations (Darcy's law for porous medium)
-        # u = -(k/μ) * ∂p/∂x
-        # v = -(k/μ) * (∂p/∂y + ρg)
-        # This one might be wierd - none of these fake things are based on the paper at all
-
-        # I'm gonna replace the Pressure term with:
-        fake_pressure = (Pressure_water * Saturation_water) + (Pressure_steam * Saturation_steam)
-        # and the mu term (which is viscosity) with a saturation-multiplied term
-        fake_viscosity = (Saturation_water * mu_w) + (Saturation_steam * mu_s)
-        # and for rho, lets just use water for now I guess :/
-        self.equations["darcy_x"] = Xvelocity + (k / fake_viscosity) * fake_pressure.diff(x)
-        self.equations["darcy_y"] = Yvelocity + (k / fake_viscosity) * (fake_pressure.diff(y) + rho_w * 9.81)"""
-
-# Alternative: Simplified single-phase version more suitable for magma chambers
-class SimplifiedMagmaChamberPDE(PDE):
-    """
-    Simplified version focusing on temperature and single-phase flow,
-    more appropriate for magma chamber modeling
-    """
-    name = "SimplifiedMagmaChamber"
-    
-    def __init__(self):
-        # Symbols
-        time, x, y = Symbol('time'), Symbol('x'), Symbol('y')
-
-        # Field variables
-        Temperature = Function("Temperature")(time, x, y)  # T [°C]
-        Pressure = Function("Pressure")(time, x, y)        # p [Pa]
-        Xvelocity = Function("Xvelocity")(time, x, y)      # u [m/s]
-        Yvelocity = Function("Yvelocity")(time, x, y)      # v [m/s]
-        
-        # Physical constants for magma
-        rho = 2600.0        # Magma density [kg/m³]
-        cp = 1200.0         # Specific heat [J/kg·K]
-        k_thermal = 2.5     # Thermal conductivity [W/m·K]
-        alpha = k_thermal / (rho * cp)  # Thermal diffusivity [m²/s]
-        
-        # For Darcy flow in porous medium (if applicable)
-        phi = 0.1           # Porosity
-        k_perm = 1e-12      # Permeability [m²]
-        mu = 1e3            # Viscosity [Pa·s] (much higher for magma)
-        
-        self.equations = {}
-        
-        # Mass conservation (continuity)
-        self.equations["continuity"] = Xvelocity.diff(x) + Yvelocity.diff(y)
-        
-        # Energy conservation (simplified heat equation)
-        self.equations["heat_equation"] = (
-            Temperature.diff(time) + 
-            Xvelocity * Temperature.diff(x) + 
-            Yvelocity * Temperature.diff(y) - 
-            alpha * (Temperature.diff(x, 2) + Temperature.diff(y, 2))
-        )
-        
-        # Momentum equations (Darcy's law for porous medium)
-        # u = -(k/μ) * ∂p/∂x
-        # v = -(k/μ) * (∂p/∂y + ρg)
-        self.equations["darcy_x"] = Xvelocity + (k_perm / mu) * Pressure.diff(x)
-        self.equations["darcy_y"] = Yvelocity + (k_perm / mu) * (Pressure.diff(y) + rho * 9.81)
+        # - Units must be consistent. Ensure q_sf and q_sh have correct units
