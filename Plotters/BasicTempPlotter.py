@@ -14,6 +14,12 @@ class ChamberPlotter(ValidatorPlotter):
         chamber_width, chamber_height = 20000, 6000 # Same for chamber size - normalize to 0 - 1
         figures = []
 
+        min_true_temp = true_outvar["Temperature"].min()
+        min_pred_temp = pred_outvar["Temperature"].min()
+            
+        max_true_temp = true_outvar["Temperature"].max()
+        max_pred_temp = pred_outvar["Temperature"].max()
+
         for t in times:
             # Filter data for this specific time
             time_mask = (invar["time"][:,0] == t)
@@ -28,12 +34,6 @@ class ChamberPlotter(ValidatorPlotter):
             # Get temperature data for this time step
             temp_true = true_outvar["Temperature"][time_mask]
             temp_pred = pred_outvar["Temperature"][time_mask]
-
-            min_true_temp = true_outvar["Temperature"][time_mask].min()
-            min_pred_temp = pred_outvar["Temperature"][time_mask].min()
-            
-            max_true_temp = true_outvar["Temperature"][time_mask].max()
-            max_pred_temp = pred_outvar["Temperature"][time_mask].max()
             
             # Interpolate onto regular grid
             temp_true_interp, temp_pred_interp = self.interpolate_output(

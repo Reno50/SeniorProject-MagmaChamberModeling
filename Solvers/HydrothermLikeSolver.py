@@ -32,14 +32,56 @@ from physicsnemo.sym.domain.validator import PointwiseValidator
 from physicsnemo.sym.key import Key
 import physicsnemo.sym
 import numpy as np
+from physicsnemo.sym.domain.monitor.pointwise import PointwiseMonitor
 
 from PDEs.TwoEquationModels import GeothermalSystemPDE
 from InitialConditionsAndConstants.BasicInitialConditionsAndConsts import generate_initial_temps
 from Plotters.BasicTempPlotter import ChamberPlotter
+import logging
 
+class LoggingSolver(Solver):
+    def __init__(self, cfg, domain):
+        super().__init__(cfg, domain)
+        self.logger = logging.getLogger(__name__)
+        self.log_freq = 1000  # Log every 100 iterations
+        
+    def compute_losses(self, step):
+        """Override to log individual loss components"""
+        losses = super().compute_losses(step)
+        
+        # Log periodically
+        if step % self.log_freq == 0:
+            self.logger.info(f"\n{'='*60}")
+            self.logger.info(f"Step {step} - Individual Loss Components:")
+            self.logger.info(f"{'='*60}")
+            
+            total_loss = 0.0
+            for name, loss_dict in losses.items():
+                self.logger.info(f"\n{name}:")
+                if isinstance(loss_dict, dict):
+                    for loss_key, loss_val in loss_dict.items():
+                        val = loss_val.item() if hasattr(loss_val, 'item') else loss_val
+                        self.logger.info(f"  {loss_key}: {val:.6e}")
+                        total_loss += val
+                else:
+                    val = loss_dict.item() if hasattr(loss_dict, 'item') else loss_dict
+                    self.logger.info(f"  loss: {val:.6e}")
+                    total_loss += val
+            
+            self.logger.info(f"\nTotal Loss: {total_loss:.6e}")
+            self.logger.info(f"{'='*60}\n")
+        
+        return losses
 
 @physicsnemo.sym.main(config_path="conf", config_name="config")
 def create_enhanced_solver(cfg: PhysicsNeMoConfig):
+    # Setup logging at the very beginning
+    logging.basicConfig(
+        level=logging.INFO,
+        format='[%(levelname)s] - %(message)s',
+        force=True  # Override any existing config
+    )
+
     beginTime, endTime = 0.0, 1.0 # We are just representing 1.0 as the 'end time'
     # I'm just going to arbitrarily say we'll finish it at, say, 300 kyr
 
@@ -167,21 +209,29 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
     domain.add_constraint(bottom_wall_constraint, "bottom_wall_constraint")
 
 
-    # # Add this so we don't need wall-wide pressure constraints
-    pressure_ref = PointwiseConstraint.from_numpy(
-        nodes=nodes,
-        invar={
-            "time": np.array([0.0]).reshape(1, 1),
-            "x": np.array([0.5]).reshape(1, 1),
-            "y": np.array([0.5]).reshape(1, 1)
-        },
-        outvar={
-            "Pressure_water": np.array([0.0]).reshape(1, 1),
-            "Pressure_steam": np.array([0.0]).reshape(1, 1)
-        },
-        batch_size=1,
+    # Add a separate small constraint just for pressure anchoring
+    pressure_anchor_geom = Rectangle(
+        point_1=(0.49, 0.49), 
+        point_2=(0.51, 0.51),  # Small region around center
+        parameterization=Parameterization({
+            Parameter("time"): (beginTime, endTime)
+        })
     )
-    #domain.add_constraint(pressure_ref, "pressure_reference")
+
+    pressure_anchor = PointwiseInteriorConstraint(
+        nodes=nodes,
+        geometry=pressure_anchor_geom,
+        outvar={
+            "Pressure_water": 0.0,
+            "Pressure_steam": 0.0,
+        },
+        batch_size=100,
+        lambda_weighting={
+            "Pressure_water": 1.0,
+            "Pressure_steam": 1.0,
+        }
+    )
+    domain.add_constraint(pressure_anchor, "pressure_anchor")
 
     # Interior PDE Constraints
     # This enforces the PDE equations throughout the interior
@@ -197,10 +247,10 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         },
         batch_size=cfg.batch_size.interior,
         lambda_weighting={
-            "mass_conservation": 2.0,
-            "energy_conservation": 2.0,
-            "darcy_x": 1,
-            "darcy_y": 1,
+            "mass_conservation": 5.0,
+            "energy_conservation": 5.0,
+            "darcy_x": 2.0,
+            "darcy_y": 2.0,
             "sat_sum": 3.0,
         }
     )
@@ -229,13 +279,13 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         },
         batch_size=cfg.batch_size.interior,
         lambda_weighting={
-            "XVelocity": 3.5,
-            "YVelocity": 3.5,
+            "XVelocity": 1.0,
+            "YVelocity": 1.0,
             "Temperature": 5.0,
-            "Pressure_water": 1,
-            "Pressure_steam": 1,
-            "Saturation_steam": 1,
-            "Saturation_water": 1,
+            "Pressure_water": 0.5,
+            "Pressure_steam": 0.5,
+            "Saturation_steam": 1.0,
+            "Saturation_water": 1.0,
         }
     )
     domain.add_constraint(interior_initial, "initial_velocities")
@@ -291,7 +341,7 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         },
         batch_size=len(temperature_samples),
         lambda_weighting={
-            "Temperature": np.full((len(temperature_samples), 1), 5.0)  # per-point weights
+            "Temperature": np.full((len(temperature_samples), 1), 2.0)  # per-point weights
         },
         shuffle=False,  # probably want deterministic since data is small
         drop_last=False
@@ -336,5 +386,5 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
     domain.add_validator(viz_validator)
 
     # Create and run solver
-    solver = Solver(cfg, domain)
+    solver = LoggingSolver(cfg, domain)
     solver.solve()
