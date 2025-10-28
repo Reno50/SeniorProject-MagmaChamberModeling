@@ -43,7 +43,8 @@ training:
   max_steps : 200000
 
 batch_size:
-  surface: 512 #was 256
-  boundary: 1000 #was 64
-  interior: 2000 #was 256 These could be increased as we use the RTX 6000 ADA
+  surface: 1024 #was 256
+  boundary: 4000 #was 64 (changed from 1000 10/28/25)
+  interior: 8000 #was 256 (changed from 2000 10/28/25)
+  #These could be increased as we use the RTX 6000 ADA
 
