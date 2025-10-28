@@ -137,7 +137,7 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
             Parameter("time"): (beginTime, endTime)
         },
         outvar={
-            "XVelocity": 0.0 # Such that fluid only can move tangential to the wall
+            "XVelocity": lambda **_: 0.0  # Keep same boundary value but avoid sympy lambda expecting missing args
         },
         batch_size=cfg.batch_size.boundary,
         lambda_weighting={
@@ -155,8 +155,8 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
             Parameter("time"): (beginTime, endTime)
         },
         outvar={
-            "Temperature": 20.0,
-            "YVelocity": 0.0
+            "Temperature": lambda **_: 20.0,
+            "YVelocity": lambda **_: 0.0
         },
         batch_size=cfg.batch_size.boundary,
         lambda_weighting={
@@ -175,7 +175,7 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
             Parameter("time"): (beginTime, endTime)
         },
         outvar={
-            "XVelocity": 0.0
+            "XVelocity": lambda **_: 0.0
         },
         batch_size=cfg.batch_size.boundary,
         lambda_weighting={
@@ -216,8 +216,8 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
             Parameter("time"): (beginTime, endTime)
         },
         outvar={
-            "YVelocity": 0.0,
-            "heat_flux_y": 0.065  # 65 mW/m² = 0.065 W/m²
+            "YVelocity": lambda **_: 0.0,
+            "heat_flux_y": lambda **_: 0.065  # 65 mW/m² = 0.065 W/m²
         },
         batch_size=cfg.batch_size.boundary,
         lambda_weighting={
@@ -241,8 +241,8 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         nodes=nodes,
         geometry=pressure_anchor_geom,
         outvar={
-            "Pressure_water": 0.0,
-            "Pressure_steam": 0.0,
+            "Pressure_water": lambda **_: 0.0,
+            "Pressure_steam": lambda **_: 0.0,
         },
         batch_size=100,
         lambda_weighting={
@@ -258,11 +258,11 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         nodes=nodes,
         geometry=chamber,
         outvar={
-            "mass_conservation": 0,
-            "energy_conservation": 0,
-            "darcy_x": 0,
-            "darcy_y": 0,
-            "sat_sum": 0,
+            "mass_conservation": lambda **_: 0,
+            "energy_conservation": lambda **_: 0,
+            "darcy_x": lambda **_: 0,
+            "darcy_y": lambda **_: 0,
+            "sat_sum": lambda **_: 0,
         },
         batch_size=cfg.batch_size.interior,
         lambda_weighting={
@@ -289,12 +289,12 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         geometry=interior_t0,
         outvar={
             "Temperature": generate_initial_temps, # Initial temps
-            "Pressure_water": 0.0,     
-            "Pressure_steam": 0.0,
-            "Saturation_steam": 0.0,
-            "Saturation_water": 1.0,
-            "XVelocity": 0.0,
-            "YVelocity": 0.0,
+            "Pressure_water": lambda **_: 0.0,     
+            "Pressure_steam": lambda **_: 0.0,
+            "Saturation_steam": lambda **_: 0.0,
+            "Saturation_water": lambda **_: 1.0,
+            "XVelocity": lambda **_: 0.0,
+            "YVelocity": lambda **_: 0.0,
         },
         batch_size=cfg.batch_size.interior,
         lambda_weighting={
