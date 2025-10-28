@@ -57,9 +57,10 @@ training:
   max_steps : 200000
 
 batch_size:
-  surface: 4096 #was 256
-  boundary: 2048 #was 64
-  interior: 4096 #was 256 These could be increased as we use the RTX 6000 ADA
+  surface: 1024 #was 256
+  boundary: 4000 #was 64 (changed from 1000 10/28/25)
+  interior: 8000 #was 256 (changed from 2000 10/28/25)
+  #These could be increased as we use the RTX 6000 ADA
 
 # An epoch system is inherently different - epoch implies, usually, a fixed dataset where each epoch is one run-through of the dataset (or a subset)
 # However, this system is a little different - every step, it runs through batch_size samples and evaluates loss and learns from those
