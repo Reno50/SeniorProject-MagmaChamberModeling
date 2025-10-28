@@ -17,17 +17,31 @@
 defaults :
   - physicsnemo_default
   - arch:
+      #- siren
       - fully_connected
+      #- fourier
   - scheduler: tf_exponential_lr
   - optimizer: adam
   - loss: sum
   - _self_
 
+arch:
+  fully_connected:
+    layer_size: 64
+    nr_layers: 6
+  fourier:
+    layer_size: 64
+    nr_layers: 6
+    frequencies: "(\"axis\", [i for i in range(40)])"
+  siren:
+    layer_size: 64
+    nr_layers: 6
+
 cuda_graphs: false
 find_unused_parameters: true
 
 scheduler:
-  decay_rate: 0.95 
+  decay_rate: 0.98
   #every {decay_steps} the model is allowed to
   #train this percentage of its current training rate.
   #This so at .95 every 1500, at 200,000 steps, the
@@ -38,12 +52,14 @@ optimizer:
   lr: 1e-3   # control training rate, default 1e-3
 
 training:
-  rec_results_freq: 10000
-  rec_constraint_freq: 10000
+  rec_results_freq: 5000
+  rec_constraint_freq: 20000
   max_steps : 200000
 
 batch_size:
-  surface: 512 #was 256
-  boundary: 1000 #was 64
-  interior: 2000 #was 256 These could be increased as we use the RTX 6000 ADA
+  surface: 4096 #was 256
+  boundary: 2048 #was 64
+  interior: 4096 #was 256 These could be increased as we use the RTX 6000 ADA
 
+# An epoch system is inherently different - epoch implies, usually, a fixed dataset where each epoch is one run-through of the dataset (or a subset)
+# However, this system is a little different - every step, it runs through batch_size samples and evaluates loss and learns from those

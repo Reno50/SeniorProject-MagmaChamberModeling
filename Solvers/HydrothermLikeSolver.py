@@ -43,7 +43,7 @@ class LoggingSolver(Solver):
     def __init__(self, cfg, domain):
         super().__init__(cfg, domain)
         self.logger = logging.getLogger(__name__)
-        self.log_freq = 1000  # Log every 100 iterations
+        self.log_freq = 2500 # Log every log_freq steps
         
     def compute_losses(self, step):
         """Override to log individual loss components"""
@@ -102,8 +102,13 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         output_keys=[Key("Temperature"), Key("XVelocity"), Key("YVelocity"), Key("Pressure_water"), Key("Pressure_steam"), Key("Saturation_water"), Key("Saturation_steam")],
         cfg=cfg.arch.fully_connected,
         layer_size=64,
-        nr_layers=16
+        nr_layers=6
     )
+
+    # Try cfg.arch.fourier,
+    # frequencies=("axis", [i for i in range(10)]),  # Fourier modes
+
+    # or cfg.arch.siren
     
     magma_pde = GeothermalSystemPDE()
     nodes = magma_pde.make_nodes() + [network.make_node(name="enhanced_magma_net")]
@@ -261,7 +266,7 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         point_1=(0, 0), 
         point_2=(1, 1),
         parameterization=Parameterization({
-            Parameter("time"): 0.0
+            Parameter("time"): (beginTime, beginTime + 0.0001)
         })
     )
 
@@ -347,11 +352,11 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         drop_last=False
     )
 
-    domain.add_constraint(geo_constraint, "geological_samples")
+    #domain.add_constraint(geo_constraint, "geological_samples")
 
     # --- Separate visualization validator (no constraints on evolution) ---
     viz_times = np.array([beginTime, beginTime + (endTime / 4), beginTime + (endTime / 2), beginTime + ((3 * endTime) / 4), endTime], dtype=float)
-    viz_points = chamber.sample_interior(512)
+    viz_points = chamber.sample_interior(2048)
 
     n_viz_times = len(viz_times)
     n_viz_points = viz_points["x"].shape[0]
