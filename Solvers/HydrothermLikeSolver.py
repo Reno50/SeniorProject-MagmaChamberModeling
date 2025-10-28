@@ -31,7 +31,8 @@ from physicsnemo.sym.domain.constraint import (
 from physicsnemo.sym.domain.validator import PointwiseValidator
 from physicsnemo.sym.key import Key
 import physicsnemo.sym
-import numpy as np
+import torch  # Leverage GPU tensors for constraint data preparation
+from contextlib import nullcontext  # Provide CPU fallback context when autocast is unavailable
 from physicsnemo.sym.domain.monitor.pointwise import PointwiseMonitor
 
 from PDEs.TwoEquationModels import GeothermalSystemPDE
@@ -44,10 +45,17 @@ class LoggingSolver(Solver):
         super().__init__(cfg, domain)
         self.logger = logging.getLogger(__name__)
         self.log_freq = 2500 # Log every log_freq steps
+        compile_fn = getattr(torch, "compile", None)  # Detect torch.compile so we can accelerate loss evaluation when possible
+        if compile_fn is not None:  # Compile only when PyTorch supports ahead-of-time graph creation
+            self._compiled_compute_losses = compile_fn(super().compute_losses, mode="reduce-overhead")  # Wrap base compute_losses to reduce dispatch overhead
+        else:
+            self._compiled_compute_losses = super().compute_losses  # Fallback keeps original path when compilation is unsupported
         
     def compute_losses(self, step):
         """Override to log individual loss components"""
-        losses = super().compute_losses(step)
+        autocast_context = (torch.autocast(device_type="cuda", dtype=torch.float16) if torch.cuda.is_available() else nullcontext())  # Use mixed precision on GPU to shrink math cost while leaving CPU untouched
+        with autocast_context:  # Ensure autocast is active only when the selected context supports it
+            losses = self._compiled_compute_losses(step)  # Run the compiled or original loss computation inside the precision-optimized context
         
         # Log periodically
         if step % self.log_freq == 0:
@@ -81,6 +89,8 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         format='[%(levelname)s] - %(message)s',
         force=True  # Override any existing config
     )
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # Keep reusable tensors on GPU when available for faster setup
+    tensor_dtype = torch.float32  # Standardize dtype to float32 so conversions stay consistent with torch autocast expectations
 
     beginTime, endTime = 0.0, 1.0 # We are just representing 1.0 as the 'end time'
     # I'm just going to arbitrarily say we'll finish it at, say, 300 kyr
@@ -176,18 +186,22 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
 
     # Right wall is special, it also gets another constraint
     n_points = cfg.batch_size.boundary  # number of points along the right boundary
-    y_values = np.linspace(0, 1, n_points)
-    temp_values = 20.0 + 150.0 * y_values  # Geothermal gradient
+    y_values = torch.linspace(0.0, 1.0, n_points, device=device, dtype=tensor_dtype)  # Sample boundary positions directly on GPU
+    temp_values = 20.0 + 150.0 * y_values  # Maintain geothermal gradient computation on GPU tensors
+    time_column = torch.zeros((n_points, 1), device=device, dtype=tensor_dtype)  # Precompute constant time column on GPU for reuse
+    x_column = torch.ones((n_points, 1), device=device, dtype=tensor_dtype)  # Precompute constant x column on GPU for reuse
+    y_column = y_values.reshape(-1, 1)  # Align sampled y positions with solver expectations while staying on GPU
+    temp_column = temp_values.reshape(-1, 1)  # Shape temperature targets for constraint batching on GPU
 
     right_wall_temp_constraint = PointwiseConstraint.from_numpy(
         nodes=nodes,
         invar={
-            "time": np.full((n_points, 1), 0.0),
-            "x": np.full((n_points, 1), 1.0),
-            "y": y_values.reshape(-1, 1)
+            "time": time_column.cpu().numpy(),
+            "x": x_column.cpu().numpy(),
+            "y": y_column.cpu().numpy()
         },
         outvar={
-            "Temperature": temp_values
+            "Temperature": temp_column.cpu().numpy()
         },
         batch_size=cfg.batch_size.boundary, # Very important that this match the number of points in the invar
     )
@@ -334,19 +348,25 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         {"x": 0.0, "y": 1, "time": beginTime + (endTime / (300/300)), "Temperature": 450.0},
     ]
 
+    sample_time = torch.tensor([s["time"] for s in temperature_samples], dtype=tensor_dtype, device=device).reshape(-1, 1)  # Hold sample times on GPU before conversion to avoid repeated CPU work
+    sample_x = torch.tensor([s["x"] for s in temperature_samples], dtype=tensor_dtype, device=device).reshape(-1, 1)  # Keep sample x positions on GPU for consistent dtype
+    sample_y = torch.tensor([s["y"] for s in temperature_samples], dtype=tensor_dtype, device=device).reshape(-1, 1)  # Keep sample y positions on GPU for consistent dtype
+    sample_temperature = torch.tensor([s["Temperature"] for s in temperature_samples], dtype=tensor_dtype, device=device).reshape(-1, 1)  # Maintain target temperatures on GPU for later reuse
+    sample_lambda = torch.full((len(temperature_samples), 1), 2.0, dtype=tensor_dtype, device=device)  # Prepare weighting tensor on GPU to minimize CPU allocations
+
     geo_constraint = PointwiseConstraint.from_numpy(
         nodes=nodes,
         invar={
-            "time": np.array([s["time"] for s in temperature_samples]).reshape(-1, 1),
-            "x": np.array([s["x"] for s in temperature_samples]).reshape(-1, 1),
-            "y": np.array([s["y"] for s in temperature_samples]).reshape(-1, 1),
+            "time": sample_time.cpu().numpy(),
+            "x": sample_x.cpu().numpy(),
+            "y": sample_y.cpu().numpy(),
         },
         outvar={
-            "Temperature": np.array([s["Temperature"] for s in temperature_samples]).reshape(-1, 1),
+            "Temperature": sample_temperature.cpu().numpy(),
         },
         batch_size=len(temperature_samples),
         lambda_weighting={
-            "Temperature": np.full((len(temperature_samples), 1), 2.0)  # per-point weights
+            "Temperature": sample_lambda.cpu().numpy()  # per-point weights
         },
         shuffle=False,  # probably want deterministic since data is small
         drop_last=False
@@ -355,28 +375,38 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
     #domain.add_constraint(geo_constraint, "geological_samples")
 
     # --- Separate visualization validator (no constraints on evolution) ---
-    viz_times = np.array([beginTime, beginTime + (endTime / 4), beginTime + (endTime / 2), beginTime + ((3 * endTime) / 4), endTime], dtype=float)
-    viz_points = chamber.sample_interior(2048)
+    viz_times = torch.tensor([beginTime, beginTime + (endTime / 4), beginTime + (endTime / 2), beginTime + ((3 * endTime) / 4), endTime], dtype=tensor_dtype, device=device)  # Store visualization times on GPU for later reuse
+    viz_points_raw = chamber.sample_interior(2048)
+    viz_points = {key: torch.from_numpy(value).to(device=device, dtype=tensor_dtype) for key, value in viz_points_raw.items()}  # Move sampled interior points to GPU tensors for batching
 
-    n_viz_times = len(viz_times)
+    n_viz_times = viz_times.shape[0]
     n_viz_points = viz_points["x"].shape[0]
 
+    tiled_times = viz_times.repeat(n_viz_points).reshape(-1, 1)  # Tile times on GPU to match repeated spatial samples
+    repeated_x = viz_points["x"].repeat_interleave(n_viz_times, dim=0)  # Repeat x positions on GPU to align with tiled times
+    repeated_y = viz_points["y"].repeat_interleave(n_viz_times, dim=0)  # Repeat y positions on GPU to align with tiled times
+
+    initial_temps = generate_initial_temps(
+        repeated_x.detach().cpu().flatten().tolist(),
+        repeated_y.detach().cpu().flatten().tolist()
+    )  # Reuse GPU-prepared coordinates while preserving original callable contract
+
+    initial_temps_tensor = torch.tensor(initial_temps, dtype=tensor_dtype, device=device).reshape(-1, 1)  # Materialize visualization temps on GPU for consistent downstream typing
+    zero_velocity = torch.zeros_like(initial_temps_tensor, device=device)  # Allocate matching zero velocities on GPU to avoid NumPy calls
+
     viz_invar = {
-        "time": np.tile(viz_times, n_viz_points).reshape(-1, 1),
-        "x": np.repeat(viz_points["x"], n_viz_times, axis=0),
-        "y": np.repeat(viz_points["y"], n_viz_times, axis=0),
+        "time": tiled_times.detach().cpu().numpy(),
+        "x": repeated_x.detach().cpu().numpy(),
+        "y": repeated_y.detach().cpu().numpy(),
     }
 
-    # Initial temperatures for visualizer
-    initial_temps = generate_initial_temps(
-        viz_invar["x"].flatten(), 
-        viz_invar["y"].flatten()
-    )
+    zero_velocity_x = zero_velocity.detach().cpu().numpy()  # Create CPU copy for X velocity to mirror original behavior
+    zero_velocity_y = zero_velocity.clone().detach().cpu().numpy()  # Create independent CPU copy for Y velocity to avoid shared references
 
     viz_outvar = {
-        "Temperature": initial_temps,  # Just for plotter, not training
-        "XVelocity": np.zeros_like(initial_temps),
-        "YVelocity": np.zeros_like(initial_temps),
+        "Temperature": initial_temps_tensor.detach().cpu().numpy(),  # Just for plotter, not training
+        "XVelocity": zero_velocity_x,
+        "YVelocity": zero_velocity_y,
     }
 
     # Visualization validator - shows what network learned over time

@@ -57,9 +57,9 @@ training:
   max_steps : 200000
 
 batch_size:
-  surface: 1024 #was 256
-  boundary: 4000 #was 64 (changed from 1000 10/28/25)
-  interior: 8000 #was 256 (changed from 2000 10/28/25)
+  surface: 256 #was 256    (1024)
+  boundary: 64 #was 64 (changed from 1000 10/28/25) (4000)
+  interior: 256 #was 256 (changed from 2000 10/28/25)  (8000)
   #These could be increased as we use the RTX 6000 ADA
 
 # An epoch system is inherently different - epoch implies, usually, a fixed dataset where each epoch is one run-through of the dataset (or a subset)
