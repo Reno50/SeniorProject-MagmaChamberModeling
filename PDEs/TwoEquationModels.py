@@ -96,7 +96,7 @@ class GeothermalSystemPDE(PDE):
         mass_storage = phi * (rho_w * S_w + rho_s * S_s)
 
         # MASS: d/dt(mass_storage) + div(rho*q) - q_sf = 0
-        mass_eq = mass_storage.diff(time) + (div_rhoq_w + div_rhoq_s) - q_sf
+        mass_eq = mass_storage.diff(time) * dt_factor + (div_rhoq_w + div_rhoq_s) - q_sf
 
         # conduction divergence: ∇·(-K_a ∇T) = -K_a * Laplacian(T)
         conduction_div = - (K_a * T.diff(x, 2) * dx2_factor + K_a * T.diff(y, 2) * dy2_factor)

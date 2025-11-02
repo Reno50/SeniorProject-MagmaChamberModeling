@@ -181,6 +181,7 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
     right_wall_temp_constraint = PointwiseConstraint.from_numpy(
         nodes=nodes,
         invar={
+            "time": np.full((n_points, 1), 0.0),
             "x": np.full((n_points, 1), 1.0),
             "y": y_values.reshape(-1, 1)
         },

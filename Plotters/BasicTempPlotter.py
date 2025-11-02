@@ -42,7 +42,7 @@ class ChamberPlotter(ValidatorPlotter):
 
             # Create figure
             f = plt.figure(figsize=(16, 6), dpi=100)
-            plt.suptitle(f"Magma Chamber at {t*endTime:.1f} years", fontsize=16)
+            plt.suptitle(f"Magma Chamber at {t:.1f} years", fontsize=16)
             
             # True temperature
             plt.subplot(1, 3, 1)
@@ -73,7 +73,7 @@ class ChamberPlotter(ValidatorPlotter):
             plt.ylabel("Y (m)")
 
             plt.tight_layout()
-            figures.append((f, f"temp_t{t*endTime:.1f} years"))
+            figures.append((f, f"temp_t{t:.1f} years"))
             
         return figures
     
