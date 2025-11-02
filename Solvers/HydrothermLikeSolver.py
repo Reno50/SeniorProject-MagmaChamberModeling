@@ -82,8 +82,7 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         force=True  # Override any existing config
     )
 
-    beginTime, endTime = 0.0, 1.0 # We are just representing 1.0 as the 'end time'
-    # I'm just going to arbitrarily say we'll finish it at, say, 300 kyr
+    beginTime, endTime = 0.0, 300000.0
 
     chamber_width, chamber_height = 20000, 6000 # Same for chamber size - normalize to 0 - 1
 
@@ -182,7 +181,6 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
     right_wall_temp_constraint = PointwiseConstraint.from_numpy(
         nodes=nodes,
         invar={
-            "time": np.full((n_points, 1), 0.0),
             "x": np.full((n_points, 1), 1.0),
             "y": y_values.reshape(-1, 1)
         },

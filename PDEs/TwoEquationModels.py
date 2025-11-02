@@ -21,7 +21,7 @@ class GeothermalSystemPDE(PDE):
 
         Lx = 20000.0   # chamber width in meters (20 km)
         Ly = 6000.0    # chamber height in meters (6 km)
-        t_scale = 300e3 * 365.0 * 24.0 * 3600.0  # seconds in 300,000 years
+        t_scale = 365.0 * 24.0 * 3600.0  # seconds in 1 year
 
         # Scaling stuff
         dx_factor = 1.0 / Lx
