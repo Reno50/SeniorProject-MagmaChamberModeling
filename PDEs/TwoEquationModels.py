@@ -21,7 +21,10 @@ class GeothermalSystemPDE(PDE):
 
         Lx = 20000.0   # chamber width in meters (20 km)
         Ly = 6000.0    # chamber height in meters (6 km)
-        t_scale = 365.0 * 24.0 * 3600.0  # seconds in 1 year
+        # OLD --- t_scale = 300000 * 365.0 * 24.0 * 3600.0  # seconds in 300,000 years
+        # NEW --- now, we know that time is scaled by a factor of 1000000 years to 1.0 network input
+        t_scale = 1000000 * 1 # 365.0 * 24.0 * 3600.0 # seconds 000000in 1 s
+        temp_scale = 1000 # 1000 degrees in every 1.0 network inputyear
 
         # Scaling stuff
         dx_factor = 1.0 / Lx
@@ -34,7 +37,8 @@ class GeothermalSystemPDE(PDE):
         # Anytime we have an equation representing something physical with a .diff(x) or .diff(y), it'll have a * dx_factor or *dy_factor now
 
         # primary field functions (depend on time,x,y)
-        T = Function("Temperature")(time, x, y)
+        T_phys = Function("Temperature")(time, x, y)
+        T = T_phys * (1.0 / temp_scale)  # Use scaled temperature everywhere below
         p_w = Function("Pressure_water")(time, x, y)
         p_s = Function("Pressure_steam")(time, x, y)
         S_w = Function("Saturation_water")(time, x, y)
@@ -101,17 +105,20 @@ class GeothermalSystemPDE(PDE):
         # conduction divergence: ∇·(-K_a ∇T) = -K_a * Laplacian(T)
         conduction_div = - (K_a * T.diff(x, 2) * dx2_factor + K_a * T.diff(y, 2) * dy2_factor)
 
-        # advective enthalpy fluxes: φ * ρ * h * q  (flux components)
-        adv_w_x = phi * (rho_w * h_w * q_w_x)
-        adv_w_y = phi * (rho_w * h_w * q_w_y)
-        adv_s_x = phi * (rho_s * h_s * q_s_x)
-        adv_s_y = phi * (rho_s * h_s * q_s_y)
+        # advective enthalpy fluxes: φ * ρ * h * T * q  (flux components)
+        # Note: h_* are treated as specific heat capacities (J/kg/K) for sensible
+        # heat so we must multiply by Temperature (T) to get energy per mass.
+        adv_w_x = phi * (rho_w * h_w * T * q_w_x)
+        adv_w_y = phi * (rho_w * h_w * T * q_w_y)
+        adv_s_x = phi * (rho_s * h_s * T * q_s_x)
+        adv_s_y = phi * (rho_s * h_s * T * q_s_y)
 
         adv_div = adv_w_x.diff(x) * dx_factor + adv_w_y.diff(y) * dy_factor + adv_s_x.diff(x) * dx_factor + adv_s_y.diff(y) * dy_factor
 
         # ENERGY: d/dt(energy_storage) + div( -K_a * grad(T) ) + div( advective_enthalpy ) - q_sh = 0
         # where conduction_div = -K_a * Laplacian(T)
-        energy_storage = phi*(rho_w*h_w*S_w + rho_s*h_s*S_s) + (1-phi)*rho_r*h_r
+        # Energy per unit volume: include temperature for sensible heat
+        energy_storage = phi*(rho_w*h_w*S_w*T + rho_s*h_s*S_s*T) + (1-phi)*rho_r*h_r*T
         energy_eq = energy_storage.diff(time) * dt_factor + conduction_div + adv_div - q_sh
 
         self.equations = {}

@@ -18,7 +18,7 @@ defaults :
   - physicsnemo_default
   - arch:
       #- siren
-      - fully_connected
+       - fully_connected
       #- fourier
   - scheduler: tf_exponential_lr
   - optimizer: adam
@@ -27,32 +27,30 @@ defaults :
 
 arch:
   fully_connected:
-    layer_size: 64
-    nr_layers: 6
+    layer_size: 128
+    nr_layers: 8
   fourier:
-    layer_size: 64
-    nr_layers: 6
-    frequencies: "(\"axis\", [i for i in range(40)])"
+    layer_size: 128    # Wider network
+    nr_layers: 8       # Deeper network
+    frequencies_params: "('axis', [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15])"  # Explicit frequency list
   siren:
-    layer_size: 64
-    nr_layers: 6
+    layer_size: 128
+    nr_layers: 8
 
 cuda_graphs: false
 find_unused_parameters: true
 
 scheduler:
-  decay_rate: 0.98
+  decay_rate: 0.995
   #every {decay_steps} the model is allowed to
   #train this percentage of its current training rate.
-  #This so at .95 every 1500, at 200,000 steps, the
-  #train rate would be basically non-existent.
-  decay_steps: 5000
+  decay_steps: 10000
 
 optimizer:
-  lr: 1e-3   # control training rate, default 1e-3
+  lr: 5e-4   # Reduced learning rate for better stability with physical scales
 
 training:
-  rec_results_freq: 5000
+  rec_results_freq: 500
   rec_constraint_freq: 20000
   max_steps : 200000
 

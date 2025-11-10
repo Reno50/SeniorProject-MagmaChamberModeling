@@ -6,19 +6,21 @@ import scipy
 class ChamberPlotter(ValidatorPlotter):
     def __call__(self, invar, true_outvar, pred_outvar):
         """Plot results at multiple time steps"""
-        
+
+        timeScalingFactor = 1000000.0 # 1.0 time in the neural network is 1000 kyrs, so 800,000 years will be 0.8 in the network
+        # Also defined in the solver file
+        tempScalingFactor = 1000.0 # 1000 degrees is 1.0 in the network, similar to time
+
         # Get unique time values
         times = np.unique(invar["time"][:,0])
-        # Endtime = 300kr
-        endTime = 300000 # in years
         chamber_width, chamber_height = 20000, 6000 # Same for chamber size - normalize to 0 - 1
         figures = []
 
-        min_true_temp = true_outvar["Temperature"].min()
-        min_pred_temp = pred_outvar["Temperature"].min()
+        min_true_temp = max(true_outvar["Temperature"].min(), -1) # If scale goes past -1, there is a major problem, but now you can at least see that it is problematic
+        min_pred_temp = max(pred_outvar["Temperature"].min(), -1)
             
-        max_true_temp = true_outvar["Temperature"].max()
-        max_pred_temp = pred_outvar["Temperature"].max()
+        max_true_temp = max(true_outvar["Temperature"].max(), 901) # Same idea here
+        max_pred_temp = max(pred_outvar["Temperature"].max(), 901)
 
         for t in times:
             # Filter data for this specific time
@@ -33,7 +35,7 @@ class ChamberPlotter(ValidatorPlotter):
 
             # Get temperature data for this time step
             temp_true = true_outvar["Temperature"][time_mask]
-            temp_pred = pred_outvar["Temperature"][time_mask]
+            temp_pred = pred_outvar["Temperature"][time_mask] * tempScalingFactor
             
             # Interpolate onto regular grid
             temp_true_interp, temp_pred_interp = self.interpolate_output(
@@ -42,7 +44,7 @@ class ChamberPlotter(ValidatorPlotter):
 
             # Create figure
             f = plt.figure(figsize=(16, 6), dpi=100)
-            plt.suptitle(f"Magma Chamber at {t:.1f} years", fontsize=16)
+            plt.suptitle(f"Magma Chamber at {t*timeScalingFactor:.1f} years", fontsize=16)
             
             # True temperature
             plt.subplot(1, 3, 1)

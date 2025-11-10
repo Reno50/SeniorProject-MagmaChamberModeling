@@ -1,5 +1,7 @@
 import numpy as np
 
+tempScalingFactor = 1000.0 # 1000 degrees is 1.0 in the network
+
 def generate_initial_temps(x, y) -> list[int]: # A list of temperatures at each sample point
     '''
     Given two nparrays, return the initial temp - pretty simple, going off the diagram on page 171 of the paper
