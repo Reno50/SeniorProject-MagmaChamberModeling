@@ -19,8 +19,8 @@ class ChamberPlotter(ValidatorPlotter):
         min_true_temp = max(true_outvar["Temperature"].min(), -1) # If scale goes past -1, there is a major problem, but now you can at least see that it is problematic
         min_pred_temp = max(pred_outvar["Temperature"].min(), -1)
             
-        max_true_temp = max(true_outvar["Temperature"].max(), 901) # Same idea here
-        max_pred_temp = max(pred_outvar["Temperature"].max(), 901)
+        max_true_temp = min(true_outvar["Temperature"].max() * tempScalingFactor, 901) # Same idea here
+        max_pred_temp = min(pred_outvar["Temperature"].max() * tempScalingFactor, 901)
 
         for t in times:
             # Filter data for this specific time
