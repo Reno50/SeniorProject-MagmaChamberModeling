@@ -23,7 +23,7 @@ class GeothermalSystemPDE(PDE):
         Ly = 6000.0    # chamber height in meters (6 km)
         # OLD --- t_scale = 300000 * 365.0 * 24.0 * 3600.0  # seconds in 300,000 years
         # NEW --- now, we know that time is scaled by a factor of 1000000 years to 1.0 network input
-        t_scale = 1000000 * 1 # 365.0 * 24.0 * 3600.0 # seconds 000000in 1 s
+        t_scale = 1000000 * 365.0 * 24.0 * 3600.0 # seconds in 1000000 years
         temp_scale = 1000 # 1000 degrees in every 1.0 network inputyear
 
         # Scaling stuff
@@ -31,7 +31,6 @@ class GeothermalSystemPDE(PDE):
         dy_factor = 1.0 / Ly
         dx2_factor = 1.0 / (Lx * Lx)
         dy2_factor = 1.0 / (Ly * Ly)
-        # d/dt_phys = (1/t_scale) * d/dt_norm
         dt_factor = 1.0 / t_scale
 
         # Anytime we have an equation representing something physical with a .diff(x) or .diff(y), it'll have a * dx_factor or *dy_factor now

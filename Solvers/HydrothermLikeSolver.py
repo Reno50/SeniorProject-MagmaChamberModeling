@@ -178,7 +178,7 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
     n_points = cfg.batch_size.boundary  # number of points along the right boundary
     y_values = np.linspace(0, 1, n_points)
     # Make temp_values a column vector to match expected (N,1) shapes
-    temp_values = (20.0 / tempScalingFactor + (150.0 * y_values) / tempScalingFactor).reshape(-1, 1)  # Geothermal gradient
+    temp_values = (170 / tempScalingFactor - (150.0 * y_values) / tempScalingFactor).reshape(-1, 1)  # Geothermal gradient
 
     # Create time points that span the full simulation
     time_values = np.linspace(beginTime, endTime, n_points)
@@ -356,7 +356,7 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
     )
 
     # --- Separate visualization validator (no constraints on evolution) ---
-    viz_times = np.array([beginTime + 0.001, beginTime + (endTime / 4), beginTime + (endTime / 2), beginTime + ((3 * endTime) / 4), endTime], dtype=float)
+    viz_times = np.array([beginTime, beginTime + (endTime / 4), beginTime + (endTime / 2), beginTime + ((3 * endTime) / 4), endTime], dtype=float)
     viz_points = chamber.sample_interior(2048)
 
     n_viz_times = len(viz_times)
@@ -386,7 +386,7 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         nodes=nodes, 
         invar=viz_invar, 
         true_outvar=viz_outvar,
-        batch_size=32, 
+        batch_size=64, 
         plotter=plotter
     )
     domain.add_validator(viz_validator)
@@ -400,7 +400,7 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
     domain.add_constraint(pressure_anchor, "pressure_anchor")
     domain.add_constraint(interior, "interior")
     domain.add_constraint(interior_initial, "initial_velocities")
-    #domain.add_constraint(geo_constraint, "geological_samples")
+    domain.add_constraint(geo_constraint, "geological_samples")
 
     # Create and run solver
     solver = LoggingSolver(cfg, domain)
