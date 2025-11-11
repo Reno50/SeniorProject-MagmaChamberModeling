@@ -16,8 +16,8 @@ class ChamberPlotter(ValidatorPlotter):
         chamber_width, chamber_height = 20000, 6000 # Same for chamber size - normalize to 0 - 1
         figures = []
 
-        min_true_temp = max(true_outvar["Temperature"].min(), -1) # If scale goes past -1, there is a major problem, but now you can at least see that it is problematic
-        min_pred_temp = max(pred_outvar["Temperature"].min(), -1)
+        min_true_temp = max(true_outvar["Temperature"].min(), -0.00001) # If scale goes past 0, there is a major problem, but now you can at least see that it is problematic
+        min_pred_temp = max(pred_outvar["Temperature"].min(), -0.00001)
             
         max_true_temp = min(true_outvar["Temperature"].max() * tempScalingFactor, 901) # Same idea here
         max_pred_temp = min(pred_outvar["Temperature"].max() * tempScalingFactor, 901)
@@ -34,7 +34,7 @@ class ChamberPlotter(ValidatorPlotter):
             extent = (x.min(), x.max(), y.min(), y.max())
 
             # Get temperature data for this time step
-            temp_true = true_outvar["Temperature"][time_mask]
+            temp_true = true_outvar["Temperature"][time_mask] * tempScalingFactor # Because initial conditions are also in squashed temps
             temp_pred = pred_outvar["Temperature"][time_mask] * tempScalingFactor
             
             # Interpolate onto regular grid
