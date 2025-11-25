@@ -17,9 +17,9 @@
 defaults :
   - physicsnemo_default
   - arch:
-      #- siren
+       - siren
        - fully_connected
-      #- fourier
+       - fourier
   - scheduler: tf_exponential_lr
   - optimizer: adam
   - loss: sum

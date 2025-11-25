@@ -16,10 +16,10 @@ class ChamberPlotter(ValidatorPlotter):
         chamber_width, chamber_height = 20000, 6000 # Same for chamber size - normalize to 0 - 1
         figures = []
 
-        min_true_temp = max(true_outvar["Temperature"].min(), -1) # If scale goes past -1, there is a major problem, but now you can at least see that it is problematic
-        min_pred_temp = max(pred_outvar["Temperature"].min(), -1)
+        min_true_temp = max(true_outvar["Temperature"].min(), -0.00001) # If scale goes past 0, there is a major problem, but now you can at least see that it is problematic
+        min_pred_temp = min(pred_outvar["Temperature"].min(), -0.00001)
             
-        max_true_temp = min(true_outvar["Temperature"].max() * tempScalingFactor, 901) # Same idea here
+        max_true_temp = max(true_outvar["Temperature"].max() * tempScalingFactor, 901) # Same idea here
         max_pred_temp = min(pred_outvar["Temperature"].max() * tempScalingFactor, 901)
 
         for t in times:
@@ -34,7 +34,7 @@ class ChamberPlotter(ValidatorPlotter):
             extent = (x.min(), x.max(), y.min(), y.max())
 
             # Get temperature data for this time step
-            temp_true = true_outvar["Temperature"][time_mask]
+            temp_true = true_outvar["Temperature"][time_mask] * tempScalingFactor # Because initial conditions are also in squashed temps
             temp_pred = pred_outvar["Temperature"][time_mask] * tempScalingFactor
             
             # Interpolate onto regular grid
@@ -46,10 +46,13 @@ class ChamberPlotter(ValidatorPlotter):
             f = plt.figure(figsize=(16, 6), dpi=100)
             plt.suptitle(f"Magma Chamber at {t*timeScalingFactor:.1f} years", fontsize=16)
             
+            # Flip Y limits for plotting so (0,0) is top-left
+            plot_extent = (extent[0], extent[1], extent[3], extent[2])
+
             # True temperature
             plt.subplot(1, 3, 1)
             plt.title("True Temperature")
-            im1 = plt.imshow(temp_true_interp.T, origin="lower", extent=extent, 
+            im1 = plt.imshow(temp_true_interp, origin="upper", extent=plot_extent, 
                            cmap='hot', vmin=min_true_temp, vmax=max_true_temp)
             plt.colorbar(im1, label="Temperature (°C)")
             plt.xlabel("X (m)")
@@ -58,35 +61,37 @@ class ChamberPlotter(ValidatorPlotter):
             # Predicted temperature
             plt.subplot(1, 3, 2)
             plt.title("Predicted Temperature")
-            im2 = plt.imshow(temp_pred_interp.T, origin="lower", extent=extent, 
+            im2 = plt.imshow(temp_pred_interp, origin="upper", extent=plot_extent, 
                            cmap='hot', vmin=min_pred_temp, vmax=max_pred_temp)
             plt.colorbar(im2, label="Temperature (°C)")
             plt.xlabel("X (m)")
             plt.ylabel("Y (m)")
-            
-            # Difference plot
-            plt.subplot(1, 3, 3)
-            plt.title("Difference (Pred - True)")
-            diff = temp_pred_interp - temp_true_interp
-            im3 = plt.imshow(diff.T, origin="lower", extent=extent, 
-                           cmap='RdBu_r', vmin=-50, vmax=50)
-            plt.colorbar(im3, label="Temperature Difference (°C)")
-            plt.xlabel("X (m)")
-            plt.ylabel("Y (m)")
 
             plt.tight_layout()
-            figures.append((f, f"temp_t{t:.1f} years"))
+            figures.append((f, f"temp_t{t*timeScalingFactor:.1f} years"))
             
         return figures
     
-    @staticmethod 
+    @staticmethod
     def interpolate_output(x, y, us, extent):
-        """Interpolates irregular points onto a mesh"""
-        xyi = np.meshgrid(
-            np.linspace(extent[0], extent[1], 100), 
-            np.linspace(extent[2], extent[3], 100), 
-            indexing="ij"
-        )
-        us = [scipy.interpolate.griddata((x, y), u.ravel(), tuple(xyi), 
-                                       method='nearest', fill_value=np.nan) for u in us]
-        return us
+        """Interpolates irregular points onto a (y, x) mesh so imshow displays correctly"""
+        
+        # Create the grid with Y first (rows) and X second (columns)
+        yi = np.linspace(extent[2], extent[3], 100)  # ymin → ymax
+        xi = np.linspace(extent[0], extent[1], 100)  # xmin → xmax
+
+        Y, X = np.meshgrid(yi, xi, indexing="ij")  # shape: [ny, nx]
+
+        # Interpolate each variable; output matches Y,X grid shape
+        out = [
+            scipy.interpolate.griddata(
+                (x, y),
+                u.ravel(),
+                (X, Y),
+                method="nearest",
+                fill_value=np.nan
+            )
+            for u in us
+        ]
+
+        return out

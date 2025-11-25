@@ -37,7 +37,7 @@ class GeothermalSystemPDE(PDE):
 
         # primary field functions (depend on time,x,y)
         T_phys = Function("Temperature")(time, x, y)
-        T = T_phys * (1.0 / temp_scale)  # Use scaled temperature everywhere below
+        T = T_phys * temp_scale  # Use scaled temperature everywhere below
         p_w = Function("Pressure_water")(time, x, y)
         p_s = Function("Pressure_steam")(time, x, y)
         S_w = Function("Saturation_water")(time, x, y)
@@ -79,10 +79,10 @@ class GeothermalSystemPDE(PDE):
 
         # volumetric flux components for water (q_w_x, q_w_y) and steam
         q_w_x = -pref_w * p_w.diff(x) * dx_factor
-        q_w_y = -pref_w * (p_w.diff(y) * dy_factor + rho_w * g)  # includes gravity term in y
+        q_w_y = -pref_w * (p_w.diff(y) * dy_factor + rho_w * g * dy_factor)  # gravity term must also be scaled
 
         q_s_x = -pref_s * p_s.diff(x) * dx_factor
-        q_s_y = -pref_s * (p_s.diff(y) * dy_factor + rho_s * g)
+        q_s_y = -pref_s * (p_s.diff(y) * dy_factor + rho_s * g * dy_factor)  # gravity term must also be scaled
 
         # mass flux components (rho * q)
         rhoq_w_x = rho_w * q_w_x
@@ -146,6 +146,7 @@ class GeothermalSystemPDE(PDE):
         # In normalized coordinates (6 km -> 1): dT/dy_norm = -0.026 * 6000 = -156
         
         self.equations["heat_flux_y"] = -K_a * T.diff(Symbol("y")) * dy_factor
+        self.equations["heat_flux_x"] = -K_a * T.diff(Symbol("x")) * dx_factor
 
         # Notes:
         # - Replace constant rho_s, h_* with temperature/pressure dependent functions for higher fidelity.
