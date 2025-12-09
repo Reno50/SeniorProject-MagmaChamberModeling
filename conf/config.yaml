@@ -51,8 +51,8 @@ optimizer:
 
 training:
   rec_results_freq: 500
-  rec_constraint_freq: 20000
-  max_steps : 200000
+  rec_constraint_freq: 10000
+  max_steps : 50000
 
 batch_size:
   surface: 1024 #was 256

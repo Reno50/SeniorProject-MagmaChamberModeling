@@ -68,11 +68,17 @@ class LoggingSolver(Solver):
                 self.logger.info(f"\n{name}:")
                 if isinstance(loss_dict, dict):
                     for loss_key, loss_val in loss_dict.items():
-                        val = loss_val.item() if hasattr(loss_val, 'item') else loss_val
+                        if hasattr(loss_val, "detach"):
+                            val = float(loss_val.detach().cpu())
+                        else:
+                            val = float(loss_val)
                         self.logger.info(f"  {loss_key}: {val:.6e}")
                         total_loss += val
                 else:
-                    val = loss_dict.item() if hasattr(loss_dict, 'item') else loss_dict
+                    if hasattr(loss_dict, "detach"):
+                        val = float(loss_dict.detach().cpu())
+                    else:
+                        val = float(loss_dict)
                     self.logger.info(f"  loss: {val:.6e}")
                     total_loss += val
             
@@ -116,7 +122,7 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
 
     # Tried cfg.arch.fourier,
     # or cfg.arch.siren
-    # Results are not significantly better at all
+    # Results are not significantly better at all :/
     
     magma_pde = GeothermalSystemPDE()
     nodes = magma_pde.make_nodes() + [network.make_node(name="enhanced_magma_net")]
@@ -136,12 +142,10 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         },
         outvar={
             "XVelocity": 0.0,  # Such that fluid only can move tangential to the wall
-            "heat_flux_x": 0.0  # Insulating boundary - no heat flow through left wall
         },
         batch_size=cfg.batch_size.boundary,
         lambda_weighting={
             "XVelocity": 3.0,
-            "heat_flux_x": 3.0
         }
     )
 
@@ -217,7 +221,10 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         },
         outvar={
             "YVelocity": 0.0,
-            "heat_flux_y": -0.065  # Negative for upward heat flow (y increases downward) - 65 mW/m^2, 0.065 W/m^2
+            # Heat flux scaling: heat_flux_y equation gives W/(1000 m²)
+            # Physical flux 0.065 W/m² needs to be: 0.065 * 1000 = 65
+            # Positive value means heat flowing upward (in negative Y direction)
+            "heat_flux_y": -0.065  # 0.065 W/m²
         },
         batch_size=cfg.batch_size.boundary,
         lambda_weighting={
@@ -356,7 +363,7 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         },
         batch_size=len(temperature_samples),
         lambda_weighting={
-            "Temperature": np.full((len(temperature_samples), 1), 20.0)  # per-point weights
+            "Temperature": np.full((len(temperature_samples), 1), 5.0)
         },
         shuffle=False,  # probably want deterministic since data is small
         drop_last=False
