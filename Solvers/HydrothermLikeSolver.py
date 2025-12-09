@@ -68,11 +68,17 @@ class LoggingSolver(Solver):
                 self.logger.info(f"\n{name}:")
                 if isinstance(loss_dict, dict):
                     for loss_key, loss_val in loss_dict.items():
-                        val = loss_val.item() if hasattr(loss_val, 'item') else loss_val
+                        if hasattr(loss_val, "detach"):
+                            val = float(loss_val.detach().cpu())
+                        else:
+                            val = float(loss_val)
                         self.logger.info(f"  {loss_key}: {val:.6e}")
                         total_loss += val
                 else:
-                    val = loss_dict.item() if hasattr(loss_dict, 'item') else loss_dict
+                    if hasattr(loss_dict, "detach"):
+                        val = float(loss_dict.detach().cpu())
+                    else:
+                        val = float(loss_dict)
                     self.logger.info(f"  loss: {val:.6e}")
                     total_loss += val
             
@@ -80,6 +86,12 @@ class LoggingSolver(Solver):
             self.logger.info(f"{'='*60}\n")
         
         return losses
+
+# For documentation and reasons - never used, but in case it is forgotten
+top_left = (0, 0)
+top_right = (1, 0)
+bottom_left = (0, 1)
+bottom_right = (1, 1)
 
 @physicsnemo.sym.main(config_path="conf", config_name="config")
 def create_enhanced_solver(cfg: PhysicsNeMoConfig):
@@ -108,10 +120,9 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         cfg=cfg.arch.fully_connected,
     )
 
-    # Try cfg.arch.fourier,
-    # frequencies=("axis", [i for i in range(10)]),  # Fourier modes
-
+    # Tried cfg.arch.fourier,
     # or cfg.arch.siren
+    # Results are not significantly better at all :/
     
     magma_pde = GeothermalSystemPDE()
     nodes = magma_pde.make_nodes() + [network.make_node(name="enhanced_magma_net")]
@@ -130,11 +141,11 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
             Parameter("time"): (beginTime, endTime)
         },
         outvar={
-            "XVelocity": 0.0 # Such that fluid only can move tangential to the wall
+            "XVelocity": 0.0,  # Such that fluid only can move tangential to the wall
         },
         batch_size=cfg.batch_size.boundary,
         lambda_weighting={
-            "XVelocity": 3.0
+            "XVelocity": 3.0,
         }
     )
 
@@ -152,7 +163,7 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         },
         batch_size=cfg.batch_size.boundary,
         lambda_weighting={
-            "Temperature": 3.0,
+            "Temperature": 1.0,
             "YVelocity": 3.0
         }
     )
@@ -196,21 +207,24 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         batch_size=cfg.batch_size.boundary,
         lambda_weighting={
             # Provide per-sample lambda arrays to match dataset indexing expectations
-            "Temperature": np.full((n_points, 1), 3.0)
+            "Temperature": np.full((n_points, 1), 1.0)
         }
     )
 
     bottom_wall_constraint = PointwiseBoundaryConstraint(
         nodes=nodes,
         geometry=chamber,
-        criteria=Eq(y, 0.0),
+        criteria=Eq(y, 1.0),
         parameterization={
             x: (0, 1),
             Parameter("time"): (beginTime, endTime)
         },
         outvar={
             "YVelocity": 0.0,
-            "heat_flux_y": 0.065  # 65 mW/m² = 0.065 W/m²
+            # Heat flux scaling: heat_flux_y equation gives W/(1000 m²)
+            # Physical flux 0.065 W/m² needs to be: 0.065 * 1000 = 65
+            # Positive value means heat flowing upward (in negative Y direction)
+            "heat_flux_y": -0.065  # 0.065 W/m²
         },
         batch_size=cfg.batch_size.boundary,
         lambda_weighting={
@@ -278,7 +292,7 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         nodes=nodes,
         geometry=interior_t0,
         outvar={
-            "Temperature": generate_initial_temps, # Initial temps
+            "Temperature": generate_initial_temps,
             "Pressure_water": 0.0,
             "Pressure_steam": 0.0,
             "Saturation_steam": 0.0,
@@ -288,13 +302,13 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         },
         batch_size=cfg.batch_size.interior,
         lambda_weighting={
-            "XVelocity": 1.0,
-            "YVelocity": 1.0,
-            "Temperature": 10.0,
-            "Pressure_water": 0.5,
-            "Pressure_steam": 0.5,
-            "Saturation_steam": 1.0,
-            "Saturation_water": 1.0,
+            "XVelocity": 10.0,
+            "YVelocity": 10.0,
+            "Temperature": 50.0,
+            "Pressure_water": 1.0,
+            "Pressure_steam": 1.0,
+            "Saturation_steam": 10.0,
+            "Saturation_water": 10.0,
         }
     )
 
@@ -304,43 +318,43 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
     # Training data with normalized time values (0 to 1)
     temperature_samples = [ # From figure 29, page 179 - training on their *model output*
         # 20 kyr = 20/300 = 0.0667 normalized time
-        {"x": 0.0, "y": 1.0, "time": 20000 / timeScalingFactor, "Temperature": 20 / tempScalingFactor},
-        {"x": 0.0, "y": 5 / 6, "time": 20000 / timeScalingFactor, "Temperature": 50.0 / tempScalingFactor},
-        {"x": 0.0, "y": 4 / 6, "time": 20000 / timeScalingFactor, "Temperature": 190.0 / tempScalingFactor},
+        {"x": 0.0, "y": 0.0, "time": 20000 / timeScalingFactor, "Temperature": 20 / tempScalingFactor},
+        {"x": 0.0, "y": 1 / 6, "time": 20000 / timeScalingFactor, "Temperature": 50.0 / tempScalingFactor},
+        {"x": 0.0, "y": 2 / 6, "time": 20000 / timeScalingFactor, "Temperature": 190.0 / tempScalingFactor},
         {"x": 0.0, "y": 3 / 6, "time": 20000 / timeScalingFactor, "Temperature": 460.0 / tempScalingFactor},
-        {"x": 0.0, "y": 2 / 6, "time": 20000 / timeScalingFactor, "Temperature": 730.0 / tempScalingFactor},
-        {"x": 0.0, "y": 1 / 6, "time": 20000 / timeScalingFactor, "Temperature": 880.0 / tempScalingFactor},
-        {"x": 0.0, "y": 0.0, "time": 20000 / timeScalingFactor, "Temperature": 900.0 / tempScalingFactor},
+        {"x": 0.0, "y": 4 / 6, "time": 20000 / timeScalingFactor, "Temperature": 730.0 / tempScalingFactor},
+        {"x": 0.0, "y": 5 / 6, "time": 20000 / timeScalingFactor, "Temperature": 880.0 / tempScalingFactor},
+        {"x": 0.0, "y": 1.0, "time": 20000 / timeScalingFactor, "Temperature": 900.0 / tempScalingFactor},
         # 120 kyr = 120/300 = 0.4 normalized time
-        {"x": 0.0, "y": 1.0, "time": 120000 / timeScalingFactor, "Temperature": 20 / tempScalingFactor},
-        {"x": 0.0, "y": 5 / 6, "time": 120000 / timeScalingFactor, "Temperature": 250.0 / tempScalingFactor},
-        {"x": 0.0, "y": 4 / 6, "time": 120000 / timeScalingFactor, "Temperature": 350.0 / tempScalingFactor},
+        {"x": 0.0, "y": 0.0, "time": 120000 / timeScalingFactor, "Temperature": 20 / tempScalingFactor},
+        {"x": 0.0, "y": 1 / 6, "time": 120000 / timeScalingFactor, "Temperature": 250.0 / tempScalingFactor},
+        {"x": 0.0, "y": 2 / 6, "time": 120000 / timeScalingFactor, "Temperature": 350.0 / tempScalingFactor},
         {"x": 0.0, "y": 3 / 6, "time": 120000 / timeScalingFactor, "Temperature": 360.0 / tempScalingFactor},
-        {"x": 0.0, "y": 2 / 6, "time": 120000 / timeScalingFactor, "Temperature": 530.0 / tempScalingFactor},
-        {"x": 0.0, "y": 1 / 6, "time": 120000 / timeScalingFactor, "Temperature": 650.0 / tempScalingFactor},
-        {"x": 0.0, "y": 0.0, "time": 120000 / timeScalingFactor, "Temperature": 700.0 / tempScalingFactor},
+        {"x": 0.0, "y": 4 / 6, "time": 120000 / timeScalingFactor, "Temperature": 530.0 / tempScalingFactor},
+        {"x": 0.0, "y": 5 / 6, "time": 120000 / timeScalingFactor, "Temperature": 650.0 / tempScalingFactor},
+        {"x": 0.0, "y": 1.0, "time": 120000 / timeScalingFactor, "Temperature": 700.0 / tempScalingFactor},
         # 175 kyr = 175/300 = 0.5833 normalized time
-        {"x": 0.0, "y": 1.0, "time": 175000 / timeScalingFactor, "Temperature": 20 / tempScalingFactor},
-        {"x": 0.0, "y": 5 / 6, "time": 175000 / timeScalingFactor, "Temperature": 240.0 / tempScalingFactor},
-        {"x": 0.0, "y": 4 / 6, "time": 175000 / timeScalingFactor, "Temperature": 340.0 / tempScalingFactor},
+        {"x": 0.0, "y": 0.0, "time": 175000 / timeScalingFactor, "Temperature": 20 / tempScalingFactor},
+        {"x": 0.0, "y": 1 / 6, "time": 175000 / timeScalingFactor, "Temperature": 240.0 / tempScalingFactor},
+        {"x": 0.0, "y": 2 / 6, "time": 175000 / timeScalingFactor, "Temperature": 340.0 / tempScalingFactor},
         {"x": 0.0, "y": 3 / 6, "time": 175000 / timeScalingFactor, "Temperature": 380.0 / tempScalingFactor},
-        {"x": 0.0, "y": 2 / 6, "time": 175000 / timeScalingFactor, "Temperature": 480.0 / tempScalingFactor},
-        {"x": 0.0, "y": 1 / 6, "time": 175000 / timeScalingFactor, "Temperature": 560.0 / tempScalingFactor},
-        {"x": 0.0, "y": 0.0, "time": 175000 / timeScalingFactor, "Temperature": 600.0 / tempScalingFactor},
+        {"x": 0.0, "y": 4 / 6, "time": 175000 / timeScalingFactor, "Temperature": 480.0 / tempScalingFactor},
+        {"x": 0.0, "y": 5 / 6, "time": 175000 / timeScalingFactor, "Temperature": 560.0 / tempScalingFactor},
+        {"x": 0.0, "y": 1.0, "time": 175000 / timeScalingFactor, "Temperature": 600.0 / tempScalingFactor},
         # 300 kyr = 300/300 = 1.0 normalized time
-        {"x": 0.0, "y": 1.0, "time": 300000 / timeScalingFactor, "Temperature": 20 / tempScalingFactor},
-        {"x": 0.0, "y": 5 / 6, "time": 300000 / timeScalingFactor, "Temperature": 130.0 / tempScalingFactor},
-        {"x": 0.0, "y": 4 / 6, "time": 300000 / timeScalingFactor, "Temperature": 250.0 / tempScalingFactor},
+        {"x": 0.0, "y": 0.0, "time": 300000 / timeScalingFactor, "Temperature": 20 / tempScalingFactor},
+        {"x": 0.0, "y": 1 / 6, "time": 300000 / timeScalingFactor, "Temperature": 130.0 / tempScalingFactor},
+        {"x": 0.0, "y": 2 / 6, "time": 300000 / timeScalingFactor, "Temperature": 250.0 / tempScalingFactor},
         {"x": 0.0, "y": 3 / 6, "time": 300000 / timeScalingFactor, "Temperature": 320.0 / tempScalingFactor},
-        {"x": 0.0, "y": 2 / 6, "time": 300000 / timeScalingFactor, "Temperature": 380.0 / tempScalingFactor},
-        {"x": 0.0, "y": 1 / 6, "time": 300000 / timeScalingFactor, "Temperature": 430.0 / tempScalingFactor},
-        {"x": 0.0, "y": 0.0, "time": 300000 / timeScalingFactor, "Temperature": 450.0 / tempScalingFactor},
+        {"x": 0.0, "y": 4 / 6, "time": 300000 / timeScalingFactor, "Temperature": 380.0 / tempScalingFactor},
+        {"x": 0.0, "y": 5 / 6, "time": 300000 / timeScalingFactor, "Temperature": 430.0 / tempScalingFactor},
+        {"x": 0.0, "y": 1.0, "time": 300000 / timeScalingFactor, "Temperature": 450.0 / tempScalingFactor},
     ]
 
     geo_constraint = PointwiseConstraint.from_numpy(
         nodes=nodes,
         invar={
-            "time": np.array([s["time"] * endTime for s in temperature_samples]).reshape(-1, 1),
+            "time": np.array([s["time"] for s in temperature_samples]).reshape(-1, 1),
             "x": np.array([s["x"] for s in temperature_samples]).reshape(-1, 1),
             "y": np.array([s["y"] for s in temperature_samples]).reshape(-1, 1),
         },
@@ -349,14 +363,34 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         },
         batch_size=len(temperature_samples),
         lambda_weighting={
-            "Temperature": np.full((len(temperature_samples), 1), 2.0)  # per-point weights
+            "Temperature": np.full((len(temperature_samples), 1), 5.0)
         },
         shuffle=False,  # probably want deterministic since data is small
         drop_last=False
     )
 
     # --- Separate visualization validator (no constraints on evolution) ---
-    viz_times = np.array([beginTime, beginTime + (endTime / 4), beginTime + (endTime / 2), beginTime + ((3 * endTime) / 4), endTime], dtype=float)
+    viz_times = np.array(
+        [beginTime, 
+        beginTime + (1 * endTime / 24), 
+        beginTime + (2 * endTime / 24), 
+        beginTime + (3 * endTime / 24), 
+        beginTime + (4 * endTime / 24), 
+        beginTime + (5 * endTime / 24), 
+        beginTime + (6 * endTime / 24), 
+        beginTime + (7 * endTime / 24), 
+        beginTime + (8 * endTime / 24), 
+        beginTime + (9 * endTime / 24), 
+        beginTime + (10 * endTime / 24), 
+        beginTime + (11 * endTime / 24), 
+        beginTime + (12 * endTime / 24), 
+        beginTime + (14 * endTime / 24), 
+        beginTime + (16 * endTime / 24), 
+        beginTime + (18 * endTime / 24), 
+        beginTime + (20 * endTime / 24), 
+        beginTime + (22 * endTime / 24), 
+        endTime
+        ], dtype=float)
     viz_points = chamber.sample_interior(2048)
 
     n_viz_times = len(viz_times)

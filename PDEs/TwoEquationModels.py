@@ -1,5 +1,16 @@
-from sympy import Symbol, Function, Number
+from sympy import Symbol, Function, log, tanh
 from physicsnemo.sym.eq.pde import PDE
+
+# Helper: log10 via natural log
+def log10_sym(x):
+    return log(x, 10)
+
+# Log-linear interpolation in log10(k) between (T1, k1) and (T2, k2)
+def k_log_linear(T_sym, T1, k1, T2, k2):
+    return 10**(
+        log10_sym(k1)
+        + (log10_sym(k2) - log10_sym(k1)) * (T_sym - T1) / (T2 - T1)
+    )
 
 class GeothermalSystemPDE(PDE):
     '''
@@ -36,8 +47,8 @@ class GeothermalSystemPDE(PDE):
         # Anytime we have an equation representing something physical with a .diff(x) or .diff(y), it'll have a * dx_factor or *dy_factor now
 
         # primary field functions (depend on time,x,y)
-        T_phys = Function("Temperature")(time, x, y)
-        T = T_phys * (1.0 / temp_scale)  # Use scaled temperature everywhere below
+        T = Function("Temperature")(time, x, y)
+        T_phys = T * temp_scale  # Use physically accurate temperature everywhere below
         p_w = Function("Pressure_water")(time, x, y)
         p_s = Function("Pressure_steam")(time, x, y)
         S_w = Function("Saturation_water")(time, x, y)
@@ -52,12 +63,27 @@ class GeothermalSystemPDE(PDE):
         rho_w = 1000.0      # kg/m^3
         rho_s = 600.0       # kg/m^3 (placeholder)
         rho_r = 2700.0      # rock density kg/m^3
-        k_perm = 1e-13      # permeability m^2
         k_rw = 1.0          # rel perm water
         k_rs = 1.0          # rel perm steam
         mu_w = 1e-3         # water viscosity Pa·s
         mu_s = 1e-5         # steam viscosity Pa·s
-        g = 9.81            # m/s^2
+        g = -9.81           # m/s^2 - negative because 0 is the top and 1 is the bottom :)
+
+        # Characteristic permeabilities (m^2)
+        # Temperature-dependent permeability following Hayba & Ingebritsen style
+        # Characteristic permeabilities (m^2) for smooth T-dependent law
+        k_hot = 1e-22    # very low permeability at high T
+        k_cold = 1e-14   # higher permeability at low T
+
+        # Work in log10 space to interpolate smoothly
+        log_k_hot = log(k_hot, 10)
+        log_k_cold = log(k_cold, 10)
+
+        # Transition parameters (in physical temperature units, same as T_phys)
+        T0 = 400.0       # center of brittle-ductile transition (°C)
+        dT = 40.0        # width of transition (controls sharpness)
+
+        k_perm_temperature_varied = 10**(log_k_hot + 0.5 * (log_k_cold - log_k_hot) * (1 + tanh((T0 - T_phys) / dT)))
 
         # Enthalpies (ideally temperature-dependent functions)
         h_w = 4186.0        # J/(kg K) (approx cp for water)
@@ -73,16 +99,16 @@ class GeothermalSystemPDE(PDE):
 
         # Darcy volumetric flux q = - (k_perm * k_rel / mu) * grad( p + rho * g * y )
         # note: grad( rho*g*y ) = rho*g in y direction => accounting for gravity
-        # compute prefactors
-        pref_w = k_perm * k_rw / mu_w
-        pref_s = k_perm * k_rs / mu_s
+        # compute prefactors for fully temperature-dependent permeability
+        pref_w = k_perm_temperature_varied * k_rw / mu_w
+        pref_s = k_perm_temperature_varied * k_rs / mu_s
 
-        # volumetric flux components for water (q_w_x, q_w_y) and steam
+        # volumetric flux components for water (q_w_x, q_w_y) and steam (used in Darcy residuals)
         q_w_x = -pref_w * p_w.diff(x) * dx_factor
-        q_w_y = -pref_w * (p_w.diff(y) * dy_factor + rho_w * g)  # includes gravity term in y
+        q_w_y = -pref_w * (p_w.diff(y) * dy_factor + rho_w * g * dy_factor)
 
         q_s_x = -pref_s * p_s.diff(x) * dx_factor
-        q_s_y = -pref_s * (p_s.diff(y) * dy_factor + rho_s * g)
+        q_s_y = -pref_s * (p_s.diff(y) * dy_factor + rho_s * g * dy_factor)
 
         # mass flux components (rho * q)
         rhoq_w_x = rho_w * q_w_x
@@ -91,7 +117,6 @@ class GeothermalSystemPDE(PDE):
         rhoq_s_x = rho_s * q_s_x
         rhoq_s_y = rho_s * q_s_y
 
-        # divergence of mass flux for each phase
         div_rhoq_w = rhoq_w_x.diff(x) * dx_factor + rhoq_w_y.diff(y) * dy_factor
         div_rhoq_s = rhoq_s_x.diff(x) * dx_factor + rhoq_s_y.diff(y) * dy_factor
 
@@ -102,22 +127,20 @@ class GeothermalSystemPDE(PDE):
         mass_eq = mass_storage.diff(time) * dt_factor + (div_rhoq_w + div_rhoq_s) - q_sf
 
         # conduction divergence: ∇·(-K_a ∇T) = -K_a * Laplacian(T)
-        conduction_div = - (K_a * T.diff(x, 2) * dx2_factor + K_a * T.diff(y, 2) * dy2_factor)
+        conduction_div = - (K_a * T_phys.diff(x, 2) * dx2_factor + K_a * T_phys.diff(y, 2) * dy2_factor)
 
         # advective enthalpy fluxes: φ * ρ * h * T * q  (flux components)
-        # Note: h_* are treated as specific heat capacities (J/kg/K) for sensible
-        # heat so we must multiply by Temperature (T) to get energy per mass.
-        adv_w_x = phi * (rho_w * h_w * T * q_w_x)
-        adv_w_y = phi * (rho_w * h_w * T * q_w_y)
-        adv_s_x = phi * (rho_s * h_s * T * q_s_x)
-        adv_s_y = phi * (rho_s * h_s * T * q_s_y)
+        adv_w_x = phi * (rho_w * h_w * T_phys * q_w_x)
+        adv_w_y = phi * (rho_w * h_w * T_phys * q_w_y)
+        adv_s_x = phi * (rho_s * h_s * T_phys * q_s_x)
+        adv_s_y = phi * (rho_s * h_s * T_phys * q_s_y)
 
         adv_div = adv_w_x.diff(x) * dx_factor + adv_w_y.diff(y) * dy_factor + adv_s_x.diff(x) * dx_factor + adv_s_y.diff(y) * dy_factor
 
         # ENERGY: d/dt(energy_storage) + div( -K_a * grad(T) ) + div( advective_enthalpy ) - q_sh = 0
         # where conduction_div = -K_a * Laplacian(T)
         # Energy per unit volume: include temperature for sensible heat
-        energy_storage = phi*(rho_w*h_w*S_w*T + rho_s*h_s*S_s*T) + (1-phi)*rho_r*h_r*T
+        energy_storage = phi*(rho_w*h_w*S_w*T_phys + rho_s*h_s*S_s*T_phys) + (1-phi)*rho_r*h_r*T_phys
         energy_eq = energy_storage.diff(time) * dt_factor + conduction_div + adv_div - q_sh
 
         self.equations = {}
@@ -135,17 +158,12 @@ class GeothermalSystemPDE(PDE):
         # To ensure the saturation of steam + water = 1
         self.equations["sat_sum"] = S_s + S_w - 1
 
-        # Add a Neumann boundary condition node for heat flux
-        # This allows you to constrain the heat flux directly
-        T = Function("Temperature")(Symbol("time"), Symbol("x"), Symbol("y"))
-        K_a = 2.5  # thermal conductivity
-        
-        # Heat flux in y-direction: q_y = -K_a * dT/dy
-        # For bottom boundary with upward flux of 0.065 W/m²:
-        # -K_a * dT/dy = 0.065 => dT/dy = -0.065/2.5 = -0.026 K/m
-        # In normalized coordinates (6 km -> 1): dT/dy_norm = -0.026 * 6000 = -156
+        # Add heat flux equations using the SAME Temperature variable as the energy equation
+        # Heat flux: q = -K_a * grad(T)
+        # We need to use T (physical) for the heat flux
         
         self.equations["heat_flux_y"] = -K_a * T.diff(Symbol("y")) * dy_factor
+        self.equations["heat_flux_x"] = -K_a * T.diff(Symbol("x")) * dx_factor
 
         # Notes:
         # - Replace constant rho_s, h_* with temperature/pressure dependent functions for higher fidelity.
