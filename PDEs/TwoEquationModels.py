@@ -18,7 +18,7 @@ class GeothermalSystemPDE(PDE):
 
     Conventions:
     - x: horizontal
-    - y: vertical (positive up)
+    - y: vertical (positive down)
     - q_w, q_s are volumetric fluxes (m/s) computed from Darcy's law
     - mass conservation uses rho * q fluxes
     - energy equation uses conductive + advective enthalpy fluxes

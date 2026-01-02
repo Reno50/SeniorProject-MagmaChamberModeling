@@ -53,17 +53,33 @@ class LoggingSolver(Solver):
     def __init__(self, cfg, domain):
         super().__init__(cfg, domain)
         self.logger = logging.getLogger(__name__)
-        self.log_freq = 500 # Log every log_freq steps
+        self.log_freq = cfg.training.rec_results_freq # Log every log_freq steps
         
     def compute_losses(self, step):
         """Override to log individual loss components"""
         losses = super().compute_losses(step)
+
+        total_loss = 0.0
+
+        for name, loss_dict in losses.items():
+            if isinstance(loss_dict, dict):
+                for loss_key, loss_val in loss_dict.items():
+                    if hasattr(loss_val, "detach"):
+                        val = float(loss_val.detach().cpu())
+                    else:
+                        val = float(loss_val)
+                    total_loss += val
+            else:
+                if hasattr(loss_dict, "detach"):
+                    val = float(loss_dict.detach().cpu())
+                else:
+                    val = float(loss_dict)
+                total_loss += val
         
         # Log periodically
         if step % self.log_freq == 0:
             self.logger.info(f"Step {step} - Individual Loss Components:")
-            
-            total_loss = 0.0
+
             for name, loss_dict in losses.items():
                 self.logger.info(f"\n{name}:")
                 if isinstance(loss_dict, dict):
@@ -73,18 +89,20 @@ class LoggingSolver(Solver):
                         else:
                             val = float(loss_val)
                         self.logger.info(f"  {loss_key}: {val:.6e}")
-                        total_loss += val
                 else:
                     if hasattr(loss_dict, "detach"):
                         val = float(loss_dict.detach().cpu())
                     else:
                         val = float(loss_dict)
                     self.logger.info(f"  loss: {val:.6e}")
-                    total_loss += val
             
             self.logger.info(f"\nTotal Loss: {total_loss:.6e}")
             self.logger.info(f"{'='*60}\n")
         
+        # Add loss to file to plot later
+        with open("lossFile.csv", "a") as lossFile:
+            lossFile.write(f"{total_loss:.10f},") # Comma to make it a csv file, as a decimal value
+
         return losses
 
 # For documentation and reasons - never used, but in case it is forgotten
@@ -145,7 +163,7 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         },
         batch_size=cfg.batch_size.boundary,
         lambda_weighting={
-            "XVelocity": 3.0,
+            "XVelocity": 1.0,
         }
     )
 
@@ -181,7 +199,7 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         },
         batch_size=cfg.batch_size.boundary,
         lambda_weighting={
-            "XVelocity": 3.0
+            "XVelocity": 1.0
         }
     )
 
