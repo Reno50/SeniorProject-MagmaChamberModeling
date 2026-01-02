@@ -57,6 +57,7 @@ class ChamberPlotter(ValidatorPlotter):
                 vmin=min_true_temp,
                 vmax=max_true_temp,
                 aspect="auto",
+                interpolation="bicubic"
             )
             plt.colorbar(im1, label="Temperature (°C)")
             plt.xlabel("Distance (km)")
@@ -73,6 +74,7 @@ class ChamberPlotter(ValidatorPlotter):
                 vmin=min_pred_temp,
                 vmax=max_pred_temp,
                 aspect="auto",
+                interpolation="bicubic"
             )
             plt.colorbar(im2, label="Temperature (°C)")
             plt.xlabel("Distance (km)")

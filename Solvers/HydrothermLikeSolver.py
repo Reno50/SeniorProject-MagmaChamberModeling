@@ -145,7 +145,7 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         },
         batch_size=cfg.batch_size.boundary,
         lambda_weighting={
-            "XVelocity": 3.0,
+            "XVelocity": 1.0,
         }
     )
 
@@ -181,7 +181,7 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         },
         batch_size=cfg.batch_size.boundary,
         lambda_weighting={
-            "XVelocity": 3.0
+            "XVelocity": 1.0
         }
     )
 
@@ -420,7 +420,7 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         nodes=nodes, 
         invar=viz_invar, 
         true_outvar=viz_outvar,
-        batch_size=64, 
+        batch_size=256, 
         plotter=plotter
     )
     domain.add_validator(viz_validator)
