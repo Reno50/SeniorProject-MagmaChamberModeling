@@ -32,7 +32,6 @@ class GeothermalSystemPDE(PDE):
 
         Lx = 20000.0   # chamber width in meters (20 km)
         Ly = 6000.0    # chamber height in meters (6 km)
-        # OLD --- t_scale = 300000 * 365.0 * 24.0 * 3600.0  # seconds in 300,000 years
         # NEW --- now, we know that time is scaled by a factor of 1000000 years to 1.0 network input
         t_scale = 1000000 * 365.0 * 24.0 * 3600.0 # seconds in 1000000 years
         temp_scale = 1000 # 1000 degrees in every 1.0 network inputyear
@@ -60,8 +59,19 @@ class GeothermalSystemPDE(PDE):
         # --------------------------------------------------------------------------------
         # physical constants (tune / replace with functions later)
         phi = 0.1           # porosity
-        rho_w = 1000.0      # kg/m^3
-        rho_s = 600.0       # kg/m^3 (placeholder)
+        
+        # Boussinesq approximation: density varies with temperature for buoyancy
+        # rho = rho_ref * (1 - beta * (T - T_ref))
+        rho_w_ref = 1000.0      # kg/m^3 reference density at T_ref
+        rho_s_ref = 600.0       # kg/m^3 (placeholder)
+        T_ref = 20.0            # reference temperature (°C)
+        beta_w = 2.1e-4         # thermal expansion coefficient for water (1/K)
+        beta_s = 1.0e-3         # thermal expansion coefficient for steam (1/K)
+        
+        # Temperature-dependent densities (Boussinesq)
+        rho_w = rho_w_ref * (1 - beta_w * (T_phys - T_ref))
+        rho_s = rho_s_ref * (1 - beta_s * (T_phys - T_ref))
+        
         rho_r = 2700.0      # rock density kg/m^3
         k_rw = 1.0          # rel perm water
         k_rs = 1.0          # rel perm steam
@@ -160,11 +170,10 @@ class GeothermalSystemPDE(PDE):
 
         # Add heat flux equations using the SAME Temperature variable as the energy equation
         # Heat flux: q = -K_a * grad(T)
-        # We need to use T (physical) for the heat flux
+        # We need to use T_phys for the heat flux
         
-        self.equations["heat_flux_y"] = -K_a * T.diff(Symbol("y")) * dy_factor
-        self.equations["heat_flux_x"] = -K_a * T.diff(Symbol("x")) * dx_factor
+        self.equations["heat_flux_y"] = -K_a * T_phys.diff(Symbol("y")) * dy_factor
+        self.equations["heat_flux_x"] = -K_a * T_phys.diff(Symbol("x")) * dx_factor
 
         # Notes:
         # - Replace constant rho_s, h_* with temperature/pressure dependent functions for higher fidelity.
-        # - Units must be consistent. Ensure q_sf and q_sh have correct units

@@ -44,7 +44,9 @@ from physicsnemo.sym.domain.monitor.pointwise import PointwiseMonitor
 from PDEs.TwoEquationModels import GeothermalSystemPDE
 from InitialConditionsAndConstants.BasicInitialConditionsAndConsts import generate_initial_temps
 from Plotters.BasicTempPlotter import ChamberPlotter
+from Plotters.VelocityPlotter import VelocityPlotter
 import logging
+import torch
 
 timeScalingFactor = 1000000.0 # 1.0 time in the neural network is 1000 kyrs, so 800,000 years will be 0.8 in the network
 tempScalingFactor = 1000.0 # 1000 degrees is 1.0 in the network
@@ -54,12 +56,15 @@ class LoggingSolver(Solver):
         super().__init__(cfg, domain)
         self.logger = logging.getLogger(__name__)
         self.log_freq = cfg.training.rec_results_freq # Log every log_freq steps
+        self.loss_components_file = "lossComponents.csv"
+        self.header_written = False
         
     def compute_losses(self, step):
         """Override to log individual loss components"""
         losses = super().compute_losses(step)
 
         total_loss = 0.0
+        loss_components = {}
 
         for name, loss_dict in losses.items():
             if isinstance(loss_dict, dict):
@@ -69,12 +74,14 @@ class LoggingSolver(Solver):
                     else:
                         val = float(loss_val)
                     total_loss += val
+                    loss_components[f"{name}_{loss_key}"] = val
             else:
                 if hasattr(loss_dict, "detach"):
                     val = float(loss_dict.detach().cpu())
                 else:
                     val = float(loss_dict)
                 total_loss += val
+                loss_components[f"{name}_loss"] = val
         
         # Log periodically
         if step % self.log_freq == 0:
@@ -99,9 +106,24 @@ class LoggingSolver(Solver):
             self.logger.info(f"\nTotal Loss: {total_loss:.6e}")
             self.logger.info(f"{'='*60}\n")
         
-        # Add loss to file to plot later
+        # Add total loss to file to plot later
         with open("lossFile.csv", "a") as lossFile:
             lossFile.write(f"{total_loss:.10f},") # Comma to make it a csv file, as a decimal value
+
+        # Save individual loss components
+        with open(self.loss_components_file, "a") as comp_file:
+            if not self.header_written:
+                # Write header
+                header = "step,total_loss," + ",".join(sorted(loss_components.keys())) + "\n"
+                comp_file.write(header)
+                self.header_written = True
+            
+            # Write data row
+            row = f"{step},{total_loss:.10f}"
+            for key in sorted(loss_components.keys()):
+                row += f",{loss_components[key]:.10f}"
+            row += "\n"
+            comp_file.write(row)
 
         return losses
 
@@ -257,7 +279,7 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         point_1=(0.49, 0.49), 
         point_2=(0.51, 0.51),  # Small region around center
         parameterization=Parameterization({
-            Parameter("time"): (beginTime, endTime)
+            Parameter("time"): (beginTime, beginTime + 0.0000000000000001)
         })
     )
 
@@ -291,8 +313,8 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         lambda_weighting={
             "mass_conservation": 5.0,
             "energy_conservation": 5.0,
-            "darcy_x": 2.0,
-            "darcy_y": 2.0,
+            "darcy_x": 10.0,
+            "darcy_y": 10.0,
             "sat_sum": 3.0,
         }
     )
@@ -320,9 +342,9 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         },
         batch_size=cfg.batch_size.interior,
         lambda_weighting={
-            "XVelocity": 10.0,
-            "YVelocity": 10.0,
-            "Temperature": 50.0,
+            "XVelocity": 3.0,
+            "YVelocity": 3.0,
+            "Temperature": 30.0,
             "Pressure_water": 1.0,
             "Pressure_steam": 1.0,
             "Saturation_steam": 10.0,
@@ -442,6 +464,17 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         plotter=plotter
     )
     domain.add_validator(viz_validator)
+
+    # Velocity validator
+    plotter2 = VelocityPlotter()
+    viz_validator2 = PointwiseValidator(
+        nodes=nodes,
+        invar=viz_invar,
+        true_outvar=viz_outvar,
+        batch_size=256,
+        plotter=plotter2
+    )
+    domain.add_validator(viz_validator2)
 
     # Actually add all the constraints in a central location so comments are obvious
     domain.add_constraint(left_wall_constraint, "left_wall_constraint")
