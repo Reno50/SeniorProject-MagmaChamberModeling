@@ -8,5 +8,5 @@ with open('outputs/NewEquationsModel/lossFile.csv') as lossFile:
     plt.xlabel('Step')
     plt.ylabel('Loss at step')
     plt.title('Loss per step')
-    plt.savefig('outputs/NewEquationsModel/loss_plot.png', dpi=300, bbox_inches='tight')
-    print('Plot saved to outputs/NewEquationsModel/loss_plot.png')
+    plt.savefig('loss_plot.png', dpi=300, bbox_inches='tight')
+    print('Plot saved to loss_plot.png')

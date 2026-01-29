@@ -229,7 +229,9 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
     n_points = cfg.batch_size.boundary  # number of points along the right boundary
     y_values = np.linspace(0, 1, n_points)
     # Make temp_values a column vector to match expected (N,1) shapes
-    temp_values = (170 / tempScalingFactor - (150.0 * y_values) / tempScalingFactor).reshape(-1, 1)  # Geothermal gradient
+
+    # Geothermal gradient: 20°C at surface (y=0), increasing with depth
+    temp_values = (20.0 / tempScalingFactor + (150.0 * y_values) / tempScalingFactor).reshape(-1, 1)
 
     # Create time points that span the full simulation
     time_values = np.linspace(beginTime, endTime, n_points)
@@ -424,7 +426,9 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         beginTime + (10 * endTime / 24), 
         beginTime + (11 * endTime / 24), 
         beginTime + (12 * endTime / 24), 
-        beginTime + (14 * endTime / 24), 
+        beginTime + (13 * endTime / 24),
+        beginTime + (14 * endTime / 24),
+        beginTime + (15 * endTime / 24), 
         beginTime + (16 * endTime / 24), 
         beginTime + (18 * endTime / 24), 
         beginTime + (20 * endTime / 24), 
@@ -475,6 +479,31 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         plotter=plotter2
     )
     domain.add_validator(viz_validator2)
+
+    # Cooling time monitor - samples 100 times to find when max temp reaches 600°C
+    cooling_times = np.linspace(beginTime, endTime, 100)
+    cooling_points = chamber.sample_interior(512)
+    cooling_invar = {
+        "time": np.tile(cooling_times, 512).reshape(-1, 1),
+        "x": np.repeat(cooling_points["x"], 100, axis=0),
+        "y": np.repeat(cooling_points["y"], 100, axis=0),
+    }
+    
+    def cooling_time_metric(data):
+        times = torch.unique(data["time"][:, 0]).cpu().numpy()
+        for t in sorted(times):
+            mask = data["time"][:, 0] == t
+            if data["Temperature"][mask].max().item() * tempScalingFactor <= 600.0:
+                with open("coolingTimes.csv", "a") as f:
+                    f.write(f"{t * timeScalingFactor:.1f},")
+                return torch.tensor(t * timeScalingFactor)
+        with open("coolingTimes.csv", "a") as f:
+            f.write("None,")
+        return torch.tensor(float('nan'))
+    
+    domain.add_monitor(PointwiseMonitor(
+        cooling_invar, ["Temperature"], {"cooling_time": cooling_time_metric}, nodes
+    ))
 
     # Actually add all the constraints in a central location so comments are obvious
     domain.add_constraint(left_wall_constraint, "left_wall_constraint")

@@ -46,6 +46,7 @@ class ChamberPlotter(ValidatorPlotter):
             # Plot extent in km, with depth increasing downward
             plot_extent = (x_min_km, x_max_km, y_max_km, y_min_km)
 
+            '''
             # True temperature
             plt.subplot(2, 1, 1)
             plt.title("True Temperature")
@@ -62,9 +63,10 @@ class ChamberPlotter(ValidatorPlotter):
             plt.colorbar(im1, label="Temperature (°C)")
             plt.xlabel("Distance (km)")
             plt.ylabel("Depth (km)")
+            '''
 
             # Predicted temperature
-            plt.subplot(2, 1, 2)
+            plt.subplot(2, 1, 1)
             plt.title("Predicted Temperature")
             im2 = plt.imshow(
                 temp_pred_interp,

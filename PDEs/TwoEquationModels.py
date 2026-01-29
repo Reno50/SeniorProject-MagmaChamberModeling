@@ -60,6 +60,7 @@ class GeothermalSystemPDE(PDE):
         # physical constants (tune / replace with functions later)
         phi = 0.1           # porosity
         
+        '''
         # Boussinesq approximation: density varies with temperature for buoyancy
         # rho = rho_ref * (1 - beta * (T - T_ref))
         rho_w_ref = 1000.0      # kg/m^3 reference density at T_ref
@@ -71,6 +72,9 @@ class GeothermalSystemPDE(PDE):
         # Temperature-dependent densities (Boussinesq)
         rho_w = rho_w_ref * (1 - beta_w * (T_phys - T_ref))
         rho_s = rho_s_ref * (1 - beta_s * (T_phys - T_ref))
+        '''
+        rho_w = 1000.0      # kg/m^3
+        rho_s = 600.0       # kg/m^3 (placeholder)
         
         rho_r = 2700.0      # rock density kg/m^3
         k_rw = 1.0          # rel perm water

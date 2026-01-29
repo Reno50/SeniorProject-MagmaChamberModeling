@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 try: 
-    with open('lossComponents.csv') as comp_file:
+    with open('outputs/NewEquationsModel/lossComponents.csv') as comp_file:
         reader = csv.DictReader(comp_file)
         data = list(reader)
 except FileNotFoundError:

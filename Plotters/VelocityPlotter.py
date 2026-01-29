@@ -38,14 +38,14 @@ class VelocityPlotter(ValidatorPlotter):
             )
 
             # Create figure
-            f = plt.figure(figsize=(16, 8), dpi=300)
+            f = plt.figure(figsize=(14, 10), dpi=300)
             plt.suptitle(f"Temperature and Velocity at {t * timeScalingFactor / 1000:.0f} kyr", fontsize=16)
 
             # Plot extent in km, with depth increasing downward
             plot_extent = (x_min_km, x_max_km, y_max_km, y_min_km)
 
             # Predicted temperature with velocity vectors
-            ax = plt.subplot(1, 1, 1)
+            ax = plt.subplot(2, 1, 1)
             
             # Temperature field
             im = plt.imshow(
@@ -110,8 +110,8 @@ class VelocityPlotter(ValidatorPlotter):
         """Interpolates irregular points onto a (y, x) mesh so imshow displays correctly"""
 
         # extent is (xmin, xmax, ymin, ymax) in normalized space
-        yi = np.linspace(extent[2], extent[3], 150)  # 0 → 1
-        xi = np.linspace(extent[0], extent[1], 150)  # 0 → 1
+        yi = np.linspace(extent[2], extent[3], 100)  # 0 → 1
+        xi = np.linspace(extent[0], extent[1], 100)  # 0 → 1
 
         Y, X = np.meshgrid(yi, xi, indexing="ij")  # shape: [ny, nx]
 
@@ -120,7 +120,7 @@ class VelocityPlotter(ValidatorPlotter):
                 (x, y),
                 u.ravel(),
                 (X, Y),
-                method="linear",
+                method="nearest",
                 fill_value=np.nan,
             )
             for u in us
