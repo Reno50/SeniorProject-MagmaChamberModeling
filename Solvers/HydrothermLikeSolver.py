@@ -458,7 +458,8 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         "YVelocity": np.zeros_like(initial_temps),
     }
 
-    # Visualization validator - shows what network learned over time
+    # Visualization validator - shows temperature field of what the network has learned
+    
     plotter = ChamberPlotter()
     viz_validator = PointwiseValidator(
         nodes=nodes, 
@@ -468,8 +469,9 @@ def create_enhanced_solver(cfg: PhysicsNeMoConfig):
         plotter=plotter
     )
     domain.add_validator(viz_validator)
+    
 
-    # Velocity validator
+    # Velocity validator - shows velocity and temperature
     plotter2 = VelocityPlotter()
     viz_validator2 = PointwiseValidator(
         nodes=nodes,
