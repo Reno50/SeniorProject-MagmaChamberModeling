@@ -43,8 +43,6 @@ class GeothermalSystemPDE(PDE):
         dy2_factor = 1.0 / (Ly * Ly)
         dt_factor = 1.0 / t_scale
 
-        # Anytime we have an equation representing something physical with a .diff(x) or .diff(y), it'll have a * dx_factor or *dy_factor now
-
         # primary field functions (depend on time,x,y)
         T = Function("Temperature")(time, x, y)
         T_phys = T * temp_scale  # Use physically accurate temperature everywhere below
@@ -59,20 +57,6 @@ class GeothermalSystemPDE(PDE):
         # --------------------------------------------------------------------------------
         # physical constants (tune / replace with functions later)
         phi = 0.1           # porosity
-        
-        '''
-        # Boussinesq approximation: density varies with temperature for buoyancy
-        # rho = rho_ref * (1 - beta * (T - T_ref))
-        rho_w_ref = 1000.0      # kg/m^3 reference density at T_ref
-        rho_s_ref = 600.0       # kg/m^3 (placeholder)
-        T_ref = 20.0            # reference temperature (°C)
-        beta_w = 2.1e-4         # thermal expansion coefficient for water (1/K)
-        beta_s = 1.0e-3         # thermal expansion coefficient for steam (1/K)
-        
-        # Temperature-dependent densities (Boussinesq)
-        rho_w = rho_w_ref * (1 - beta_w * (T_phys - T_ref))
-        rho_s = rho_s_ref * (1 - beta_s * (T_phys - T_ref))
-        '''
         rho_w = 1000.0      # kg/m^3
         rho_s = 600.0       # kg/m^3 (placeholder)
         

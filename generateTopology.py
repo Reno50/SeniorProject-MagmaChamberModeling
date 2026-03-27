@@ -8,7 +8,7 @@ from physicsnemo.sym.key import Key
 WORKSPACE = Path(__file__).parent.absolute()
 
 # Recreate the same network architecture manually
-# Kinda jank, replicates the config because we can't easily import it here
+# Replicates the config because we can't easily import it here
 network = FullyConnectedArch(
     input_keys=[Key("time"), Key("x"), Key("y")],
     output_keys=[Key("Temperature"), Key("XVelocity"), Key("YVelocity"), 
@@ -24,7 +24,7 @@ state_dict = torch.load(model_path, weights_only=True)
 network.load_state_dict(state_dict)
 network.eval()
 
-# More jank, create dummy input
+# Create dummy input, necessary for the visualization
 dummy_input = {
     "time": torch.randn(1, 1, requires_grad=True),
     "x": torch.randn(1, 1, requires_grad=True),

@@ -1,6 +1,3 @@
-# We goin back to rectangles with this one once more
-# I want basic fluid flow however I also want REALISTIC fluid flow
-
 # Utilizing the GeothermalSystemPDE
 # which has:
 """
@@ -21,7 +18,7 @@ Saturation_steam
 # in the mid-to-late Cretaceous Peruvian Coastal Batholith near Ica. Calculated δ18O 
 # plagioclase values in fresh samples are between +6.7‰ to +7.9‰ at equilibrium with 
 # 18O/16O crystallization temperatures between 588°C and 654°C'
-# - thus, we'll use 621 as the crystalization temperature
+# - thus, we'll use 600 as the crystalization temperature
 
 from sympy import Symbol, Function, Eq
 from physicsnemo.sym.hydra import instantiate_arch, PhysicsNeMoConfig
