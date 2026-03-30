@@ -8,4 +8,4 @@ To run, we recommend using the NVIDIA PhysicsNeMo docker container, as using a v
 
 ## References
 
-A full list of references used the research paper this project is part of is found in [REFERENCES.md](REFERENCES.md)
+A full list of references used in the research paper this project is part of is found in [REFERENCES.md](REFERENCES.md)
